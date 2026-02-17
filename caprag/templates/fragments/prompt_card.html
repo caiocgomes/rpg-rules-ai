@@ -1,0 +1,25 @@
+<article>
+    <header>
+        <strong>{{ prompt.name }}</strong>
+        <small>Variables: {{ prompt.variables | join(", ") }}</small>
+        {% if saved|default(false) %}
+        <mark>Saved</mark>
+        {% elif reset|default(false) %}
+        <mark>Reset to default</mark>
+        {% endif %}
+    </header>
+    <form hx-put="/prompts/htmx/{{ prompt.name }}"
+          hx-target="#prompt-{{ prompt.name }}"
+          hx-swap="innerHTML">
+        <textarea name="content" rows="12">{{ prompt.content }}</textarea>
+        <div role="group">
+            <button type="submit">Save</button>
+            <button type="button" class="secondary"
+                    hx-delete="/prompts/htmx/{{ prompt.name }}"
+                    hx-target="#prompt-{{ prompt.name }}"
+                    hx-swap="innerHTML">
+                Reset to default
+            </button>
+        </div>
+    </form>
+</article>

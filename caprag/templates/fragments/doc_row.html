@@ -1,0 +1,26 @@
+<tr id="doc-{{ book.book | replace('.', '-') }}">
+    <td>{{ book.book }}</td>
+    <td>{{ book.chunk_count }}</td>
+    <td>
+        <div role="group">
+            <button class="secondary outline"
+                    hx-delete="/documents/htmx/{{ book.book }}"
+                    hx-confirm="Delete {{ book.book }}?"
+                    hx-swap="none">
+                Delete
+            </button>
+            {% if book.has_source %}
+            <button class="outline"
+                    hx-post="/documents/ingest"
+                    hx-vals='{"paths": ["{{ book.book }}"], "replace": true}'
+                    hx-headers='{"Content-Type": "application/json"}'
+                    hx-target="#progress-area"
+                    hx-swap="innerHTML">
+                Re-index
+            </button>
+            {% else %}
+            <button class="outline" disabled data-tooltip="Source file not available">Re-index</button>
+            {% endif %}
+        </div>
+    </td>
+</tr>

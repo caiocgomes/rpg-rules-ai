@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Documents{% endblock %}
+{% block content %}
+<h2>Documents</h2>
+
+<div class="grid">
+    <div>
+        <article>
+            <header>Upload files</header>
+            <form hx-post="/documents/htmx/upload"
+                  hx-target="#progress-area"
+                  hx-swap="innerHTML"
+                  hx-encoding="multipart/form-data"
+                  hx-indicator="#upload-loading">
+                <input type="file" name="files" accept=".md" multiple required>
+                <label>
+                    <input type="checkbox" name="replace" value="true">
+                    Replace existing books
+                </label>
+                <button type="submit">Ingest uploaded files</button>
+                <span id="upload-loading" class="htmx-indicator" aria-busy="true">Uploading...</span>
+            </form>
+        </article>
+
+        <article>
+            <header>Ingest from directory</header>
+            <form hx-post="/documents/htmx/ingest"
+                  hx-target="#progress-area"
+                  hx-swap="innerHTML"
+                  hx-indicator="#dir-loading">
+                <input type="text" name="directory" placeholder="/path/to/markdown/files" required>
+                <label>
+                    <input type="checkbox" name="replace" value="true">
+                    Replace existing books
+                </label>
+                <button type="submit">Ingest directory</button>
+                <span id="dir-loading" class="htmx-indicator" aria-busy="true">Processing...</span>
+            </form>
+        </article>
+
+        <div id="progress-area"></div>
+    </div>
+
+    <div>
+        <article>
+            <header>Indexed documents</header>
+            <div id="doc-list" hx-get="/documents/list" hx-trigger="load, refreshDocList from:body" hx-swap="innerHTML">
+                {% include "fragments/doc_list.html" %}
+            </div>
+        </article>
+    </div>
+</div>
+{% endblock %}

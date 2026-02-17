@@ -1,0 +1,39 @@
+# Environment
+.env
+.venv/
+
+# Data (indexed documents, vector store, docstore)
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# IDE / OS
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Claude Code
+.claude/
+
+# Temp artifacts
+section_distribution.png
+
+# PDFs (source material, not code)
+PDFs/
+pdf/

@@ -1,0 +1,106 @@
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
+from caprag.config import settings
+from caprag.retriever import get_docstore, get_vectorstore
+
+logger = logging.getLogger(__name__)
+
+
+def delete_book(book_name: str) -> None:
+    """Remove all chunks for a book from vectorstore and docstore.
+
+    Idempotent: no error if the book doesn't exist.
+    Does NOT delete the source file from SOURCES_DIR.
+    """
+    vs = get_vectorstore()
+    collection = vs._collection
+
+    # Collect parent doc_ids from children before deleting
+    result = collection.get(where={"book": book_name}, include=["metadatas"])
+    parent_ids = {
+        m.get("doc_id")
+        for m in result["metadatas"]
+        if m.get("doc_id")
+    }
+
+    collection.delete(where={"book": book_name})
+
+    if parent_ids:
+        docstore = get_docstore()
+        for pid in parent_ids:
+            docstore.mdelete([pid])
+
+    logger.info("Deleted book '%s' from index (%d parent chunks).", book_name, len(parent_ids))
+
+
+def _get_all_metadatas() -> list[dict]:
+    """Fetch all metadatas from Chroma in batches to avoid SQLite variable limit."""
+    vs = get_vectorstore()
+    collection = vs._collection
+    total = collection.count()
+    if total == 0:
+        return []
+
+    all_metadatas: list[dict] = []
+    batch_size = 1000
+    offset = 0
+    while offset < total:
+        batch = collection.get(
+            include=["metadatas"],
+            limit=batch_size,
+            offset=offset,
+        )
+        all_metadatas.extend(batch["metadatas"])
+        offset += batch_size
+    return all_metadatas
+
+
+def get_books_metadata() -> list[dict]:
+    """Return metadata for each indexed book.
+
+    Each entry has: book (name), chunk_count (int), has_source (bool).
+    """
+    counts: dict[str, int] = {}
+    for m in _get_all_metadatas():
+        book = m.get("book")
+        if book:
+            counts[book] = counts.get(book, 0) + 1
+
+    sources_path = Path(settings.sources_dir)
+    return [
+        {
+            "book": book,
+            "chunk_count": count,
+            "has_source": (sources_path / book).exists(),
+        }
+        for book, count in sorted(counts.items())
+    ]
+
+
+def get_indexed_books() -> list[str]:
+    """Return distinct book names currently in the Chroma collection."""
+    books = {m.get("book") for m in _get_all_metadatas() if m.get("book")}
+    return sorted(books)
+
+
+def reindex_directory(directory: str | Path) -> int:
+    """Clear the collection and re-ingest all .md files from directory.
+
+    Returns total number of documents ingested via the layered pipeline.
+    """
+    from caprag.pipeline import run_layered_pipeline
+
+    directory = Path(directory)
+    if not directory.is_dir():
+        raise FileNotFoundError(f"Directory not found: {directory}")
+    md_files = sorted(directory.glob("*.md"))
+
+    vs = get_vectorstore()
+    vs.reset_collection()
+
+    result = run_layered_pipeline(md_files, replace=False)
+    success_count = sum(1 for r in result.get("file_results", []) if r["status"] == "success")
+    return success_count

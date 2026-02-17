@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Chat{% endblock %}
+{% block content %}
+<h2>Chat</h2>
+
+<div id="chat-messages"></div>
+
+<form hx-post="/chat/ask"
+      hx-target="#chat-messages"
+      hx-swap="beforeend"
+      hx-indicator="#chat-loading"
+      hx-disabled-elt="button[type='submit']"
+      hx-on::after-request="this.reset(); document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;">
+    <fieldset role="group">
+        <input type="text" name="question" placeholder="Ask a question about RPG rules..." required autofocus>
+        <button type="submit">Send</button>
+    </fieldset>
+    <span id="chat-loading" class="htmx-indicator" aria-busy="true">Thinking...</span>
+</form>
+{% endblock %}

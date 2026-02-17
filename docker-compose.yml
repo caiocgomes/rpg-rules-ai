@@ -1,0 +1,16 @@
+services:
+  caprag:
+    build: .
+    ports:
+      - "8100:8100"
+    env_file:
+      - .env
+    volumes:
+      - chroma_data:/app/data/chroma
+      - prompts_data:/app/data/prompts
+      - docstore_data:/app/data/docstore
+
+volumes:
+  chroma_data:
+  prompts_data:
+  docstore_data:

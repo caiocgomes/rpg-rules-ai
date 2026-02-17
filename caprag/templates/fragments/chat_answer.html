@@ -1,0 +1,28 @@
+<div class="chat-bubble assistant">
+    <div class="meta">CapaRAG</div>
+    <div>{{ answer.answer }}</div>
+
+    {% if answer.citations %}
+    <details>
+        <summary>Citations ({{ answer.citations|length }})</summary>
+        {% for c in answer.citations %}
+        <div class="citation">
+            <p>{{ c.quote }}</p>
+            <span class="source">{{ c.source }}</span>
+        </div>
+        {% endfor %}
+    </details>
+    {% endif %}
+
+    {% if answer.sources %}
+    <p><strong>Sources:</strong> {{ answer.sources | join(", ") }}</p>
+    {% endif %}
+
+    {% if answer.see_also %}
+    <p><strong>See also:</strong>
+        {% for term in answer.see_also %}
+        <span class="see-also-tag">{{ term }}</span>
+        {% endfor %}
+    </p>
+    {% endif %}
+</div>

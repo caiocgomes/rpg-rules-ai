@@ -1,0 +1,18 @@
+{% if books %}
+<table>
+    <thead>
+        <tr>
+            <th>Book</th>
+            <th>Chunks</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for book in books %}
+        {% include "fragments/doc_row.html" %}
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No documents indexed yet.</p>
+{% endif %}

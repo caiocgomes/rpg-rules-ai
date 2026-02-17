@@ -1,0 +1,46 @@
+{% set status = progress.get("status", "running") %}
+{% set phase = progress.get("phase", "") %}
+{% set phase_completed = progress.get("phase_completed", 0) %}
+{% set phase_total = progress.get("phase_total", 0) %}
+
+<article {% if status == "running" %}
+         hx-get="/documents/htmx/progress/{{ job_id }}"
+         hx-trigger="every 2s"
+         hx-swap="outerHTML"
+         {% endif %}>
+    <header>Ingestion Progress</header>
+
+    {% if phase and phase_total > 0 %}
+    <div class="progress-container">
+        <small>{{ phase | capitalize }}: {{ phase_completed }}/{{ phase_total }}</small>
+        <progress value="{{ phase_completed }}" max="{{ phase_total }}"></progress>
+    </div>
+    {% elif phase %}
+    <p aria-busy="true">{{ phase | capitalize }}...</p>
+    {% endif %}
+
+    {% for r in progress.get("file_results", []) %}
+    <div class="file-result {{ r.status }}">
+        {% if r.status == "success" %}
+        {{ r.filename }}
+        {% elif r.status == "skipped" %}
+        {{ r.filename }} (already indexed, skipped)
+        {% elif r.status == "error" %}
+        {{ r.filename }}: {{ r.error_message }}
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    {% if status == "done" %}
+    <footer>
+        <p>Ingestion complete!</p>
+        <button onclick="this.closest('article').remove()" hx-get="/documents/list" hx-target="#doc-list" hx-swap="innerHTML">
+            Done
+        </button>
+    </footer>
+    {% elif status == "error" %}
+    <footer>
+        <p class="file-result error">Ingestion failed: {{ progress.get("error", "Unknown error") }}</p>
+    </footer>
+    {% endif %}
+</article>
