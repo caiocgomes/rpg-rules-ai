@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, HTTPException, UploadFile
@@ -12,6 +13,7 @@ app = FastAPI(title="CapaRAG API")
 
 _caprag_dir = Path(__file__).parent
 templates = Jinja2Templates(directory=str(_caprag_dir / "templates"))
+templates.env.filters["regex_replace"] = lambda s, pattern, repl: re.sub(pattern, repl, s)
 app.mount("/static", StaticFiles(directory=str(_caprag_dir / "static")), name="static")
 
 

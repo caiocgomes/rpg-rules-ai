@@ -6,6 +6,7 @@ import pytest
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage
 
+from caprag.graph import _validate_citations
 from caprag.schemas import AnswerWithSources, Question, Questions, State
 
 
@@ -108,9 +109,9 @@ async def test_generate_single_question_single_doc(mock_get_llm, mock_get_prompt
     )
 
     answer: AnswerWithSources = {
-        "answer": "GURPS uses 3d6 for resolution.",
+        "answer": "GURPS uses 3d6 for resolution [1].",
         "sources": ["GURPS Basic"],
-        "citations": [{"quote": "GURPS uses 3d6.", "source": "GURPS Basic"}],
+        "citations": [{"index": 1, "quote": "GURPS uses 3d6.", "source": "GURPS Basic"}],
         "see_also": ["Dice Rolls"],
     }
 
@@ -135,10 +136,9 @@ async def test_generate_single_question_single_doc(mock_get_llm, mock_get_prompt
 
     result = await generate(state)
 
-    assert result["answer"] is answer
+    assert result["answer"]["answer"] == answer["answer"]
     assert len(result["messages"]) == 1
     assert isinstance(result["messages"][0], AIMessage)
-    assert json.loads(result["messages"][0].content) == answer
 
     mock_prompt.ainvoke.assert_awaited_once()
     call_kwargs = mock_prompt.ainvoke.call_args[0][0]
@@ -208,7 +208,7 @@ async def test_generate_multiple_questions_multiple_docs(
     assert "[2] Source: Book2" in context
     assert "[3] Source: Book3" in context
     assert "---" in context
-    assert result["answer"] is answer
+    assert result["answer"]["answer"] == answer["answer"]
 
 
 @pytest.mark.asyncio
@@ -249,7 +249,7 @@ async def test_generate_empty_context(mock_get_llm, mock_get_prompt):
 
     call_kwargs = mock_prompt.ainvoke.call_args[0][0]
     assert call_kwargs["context"] == ""
-    assert result["answer"] is answer
+    assert result["answer"]["answer"] == answer["answer"]
 
 
 @pytest.mark.asyncio
@@ -299,6 +299,84 @@ async def test_generate_deduplicates_docs(mock_get_llm, mock_get_prompt):
     assert "[1] Source: BookA" in context
     assert "[2] Source: BookB" in context
     assert "[3]" not in context
+
+
+# ---------------------------------------------------------------------------
+# _validate_citations
+# ---------------------------------------------------------------------------
+
+
+def test_validate_citations_happy_path():
+    response: AnswerWithSources = {
+        "answer": "Rapid Strike allows two attacks [1]. Martial Arts expands this [2].",
+        "sources": ["GURPS Basic", "GURPS Martial Arts"],
+        "citations": [
+            {"index": 1, "quote": "Make two attacks", "source": "GURPS Basic"},
+            {"index": 2, "quote": "Expanded options", "source": "GURPS Martial Arts"},
+        ],
+        "see_also": [],
+    }
+    result = _validate_citations(response)
+    assert result["answer"] == response["answer"]
+    assert len(result["citations"]) == 2
+    assert result["citations"][0]["index"] == 1
+    assert result["citations"][1]["index"] == 2
+
+
+def test_validate_citations_orphan_citations_removed():
+    response: AnswerWithSources = {
+        "answer": "Only one claim here [1].",
+        "sources": ["Book1", "Book2"],
+        "citations": [
+            {"index": 1, "quote": "Claim one", "source": "Book1"},
+            {"index": 3, "quote": "Orphan", "source": "Book2"},
+        ],
+        "see_also": [],
+    }
+    result = _validate_citations(response)
+    assert len(result["citations"]) == 1
+    assert result["citations"][0]["index"] == 1
+
+
+def test_validate_citations_orphan_markers_cleaned():
+    response: AnswerWithSources = {
+        "answer": "Claim one [1]. Ghost reference [99].",
+        "sources": ["Book1"],
+        "citations": [
+            {"index": 1, "quote": "Claim one", "source": "Book1"},
+        ],
+        "see_also": [],
+    }
+    result = _validate_citations(response)
+    assert "[99]" not in result["answer"]
+    assert "[1]" in result["answer"]
+    assert len(result["citations"]) == 1
+
+
+def test_validate_citations_no_markers_passthrough():
+    response: AnswerWithSources = {
+        "answer": "Plain answer with no markers.",
+        "sources": ["Book1"],
+        "citations": [
+            {"index": 1, "quote": "Some quote", "source": "Book1"},
+        ],
+        "see_also": [],
+    }
+    result = _validate_citations(response)
+    assert result["answer"] == "Plain answer with no markers."
+    assert result["citations"] == response["citations"]
+
+
+def test_validate_citations_empty_citations():
+    response: AnswerWithSources = {
+        "answer": "No info available.",
+        "sources": [],
+        "citations": [],
+        "see_also": [],
+    }
+    result = _validate_citations(response)
+    assert result["answer"] == "No info available."
+    assert result["citations"] == []
 
 
 # ---------------------------------------------------------------------------

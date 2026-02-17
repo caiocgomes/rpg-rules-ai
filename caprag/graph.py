@@ -1,5 +1,6 @@
 import json
 import os
+import re
 
 from langchain_core.messages import AIMessage
 from langchain_openai import ChatOpenAI
@@ -9,6 +10,36 @@ from caprag.config import settings
 from caprag.prompts import get_rag_prompt
 from caprag.schemas import AnswerWithSources, State
 from caprag.strategies import get_strategy
+
+
+def _validate_citations(response: AnswerWithSources) -> AnswerWithSources:
+    """Ensure consistency between [N] markers in text and citation indices."""
+    answer_text = response.get("answer", "")
+    citations = response.get("citations", [])
+
+    markers_in_text = {int(m) for m in re.findall(r"\[(\d+)\]", answer_text)}
+
+    if not markers_in_text:
+        return response
+
+    citation_indices = {c["index"] for c in citations if "index" in c}
+
+    valid_citations = [c for c in citations if c.get("index") in markers_in_text]
+
+    valid_indices = {c["index"] for c in valid_citations}
+    orphan_markers = markers_in_text - valid_indices
+    cleaned_text = answer_text
+    for m in orphan_markers:
+        cleaned_text = cleaned_text.replace(f"[{m}]", "")
+    cleaned_text = re.sub(r"\s{2,}", " ", cleaned_text).strip()
+
+    valid_citations.sort(key=lambda c: c["index"])
+
+    return {
+        **response,
+        "answer": cleaned_text,
+        "citations": valid_citations,
+    }
 
 
 def _setup_langsmith():
@@ -52,6 +83,7 @@ async def generate(state: State):
     )
     structured_llm = llm.with_structured_output(AnswerWithSources)
     response = await structured_llm.ainvoke(messages)
+    response = _validate_citations(response)
 
     return {"answer": response, "messages": [AIMessage(content=json.dumps(response))]}
 

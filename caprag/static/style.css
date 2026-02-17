@@ -32,18 +32,58 @@
     margin-bottom: 0.25rem;
 }
 
-/* Citations */
-.citation {
-    border-left: 3px solid var(--pico-primary);
-    padding-left: 0.75rem;
-    margin: 0.5rem 0;
-    font-style: italic;
+/* Inline citation markers */
+.cite-marker {
+    color: var(--pico-primary);
+    text-decoration: none;
+    font-size: 0.8em;
+    vertical-align: super;
+    font-weight: 600;
 }
 
-.citation .source {
-    font-style: normal;
+.cite-marker:hover {
+    text-decoration: underline;
+}
+
+/* Citation reference blocks */
+.citations-block {
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.citation-ref {
+    border-left: 3px solid var(--pico-primary);
+    padding: 0.5rem 0.75rem;
+    background: color-mix(in srgb, var(--pico-card-background-color) 95%, var(--pico-primary) 5%);
+    border-radius: 0 0.25rem 0.25rem 0;
+    scroll-margin-top: 1rem;
+    transition: background 0.3s ease;
+}
+
+.citation-ref:target {
+    background: color-mix(in srgb, var(--pico-card-background-color) 85%, var(--pico-primary) 15%);
+}
+
+.cite-index {
+    font-weight: 700;
+    color: var(--pico-primary);
+    margin-right: 0.5rem;
+}
+
+.cite-source {
+    font-weight: 600;
     font-size: 0.85rem;
-    opacity: 0.7;
+}
+
+.citation-ref blockquote {
+    margin: 0.25rem 0 0 0;
+    padding: 0;
+    border: none;
+    font-style: italic;
+    font-size: 0.9rem;
+    opacity: 0.85;
 }
 
 /* Progress bar */

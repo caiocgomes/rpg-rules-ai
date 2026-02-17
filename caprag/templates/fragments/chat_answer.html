@@ -1,17 +1,17 @@
 <div class="chat-bubble assistant">
     <div class="meta">CapaRAG</div>
-    <div>{{ answer.answer }}</div>
+    <div class="answer-text">{{ answer.answer | regex_replace('\[(\d+)\]', '<a href="#cite-\\1" class="cite-marker">[\\1]</a>') | safe }}</div>
 
     {% if answer.citations %}
-    <details>
-        <summary>Citations ({{ answer.citations|length }})</summary>
+    <div class="citations-block">
         {% for c in answer.citations %}
-        <div class="citation">
-            <p>{{ c.quote }}</p>
-            <span class="source">{{ c.source }}</span>
+        <div class="citation-ref" id="cite-{{ c.index }}">
+            <span class="cite-index">[{{ c.index }}]</span>
+            <span class="cite-source">{{ c.source }}</span>
+            <blockquote>{{ c.quote }}</blockquote>
         </div>
         {% endfor %}
-    </details>
+    </div>
     {% endif %}
 
     {% if answer.sources %}

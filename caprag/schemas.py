@@ -15,6 +15,11 @@ class ProgressUpdate(TypedDict):
 
 
 class Citation(TypedDict):
+    index: Annotated[
+        int,
+        ...,
+        "The citation number matching the [N] marker in the answer text.",
+    ]
     quote: Annotated[
         str,
         ...,

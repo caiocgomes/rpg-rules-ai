@@ -8,7 +8,10 @@ DEFAULT_RAG_TEMPLATE = """You are an assistant for question-answering tasks abou
 
 Keep your answer concise (three sentences maximum in the "answer" field).
 
-For every factual claim in your answer you MUST include a citation. Each citation MUST contain:
+INLINE CITATIONS: After every factual claim in your answer, insert a marker [N] where N is the number of the context passage that supports it. For example: "Rapid Strike allows two attacks at -6 each [1]."
+
+For every [N] marker in your answer, you MUST include a matching citation with:
+- "index": the number N matching the [N] marker in the answer text
 - "quote": the EXACT verbatim passage copied from the context that supports the claim. Do not paraphrase.
 - "source": the book name exactly as shown after "Source:" in the context passage.
 
