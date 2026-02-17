@@ -72,3 +72,36 @@ def test_get_retriever_returns_cached(mock_get_vs):
 
     assert result is sentinel
     mock_get_vs.assert_not_called()
+
+
+@patch("caprag.retriever.LocalFileStore")
+@patch("caprag.retriever.RecursiveCharacterTextSplitter")
+@patch("caprag.retriever.ParentDocumentRetriever")
+@patch("caprag.retriever.get_vectorstore")
+def test_get_retriever_uses_mmr_search_type(mock_get_vs, mock_pdr_cls, mock_splitter_cls, mock_store_cls):
+    mock_get_vs.return_value = MagicMock()
+    mock_store_cls.return_value = MagicMock()
+    mock_pdr_cls.return_value = MagicMock()
+
+    retriever_module.get_retriever()
+
+    call_kwargs = mock_pdr_cls.call_args[1]
+    assert call_kwargs["search_type"] == "mmr"
+
+
+@patch("caprag.retriever.LocalFileStore")
+@patch("caprag.retriever.RecursiveCharacterTextSplitter")
+@patch("caprag.retriever.ParentDocumentRetriever")
+@patch("caprag.retriever.get_vectorstore")
+def test_get_retriever_passes_search_kwargs_from_config(mock_get_vs, mock_pdr_cls, mock_splitter_cls, mock_store_cls):
+    mock_get_vs.return_value = MagicMock()
+    mock_store_cls.return_value = MagicMock()
+    mock_pdr_cls.return_value = MagicMock()
+
+    retriever_module.get_retriever()
+
+    call_kwargs = mock_pdr_cls.call_args[1]
+    search_kwargs = call_kwargs["search_kwargs"]
+    assert search_kwargs["k"] == retriever_module.settings.retriever_k
+    assert search_kwargs["fetch_k"] == retriever_module.settings.retriever_fetch_k
+    assert search_kwargs["lambda_mult"] == retriever_module.settings.retriever_lambda_mult

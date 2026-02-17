@@ -28,7 +28,7 @@ State flows through a `State` class extending `MessagesState` with typed fields:
 
 ### Storage Layer
 
-Retrieval uses hierarchical chunking: child chunks (200 chars) for retrieval precision, parent chunks (2000 chars) for context completeness.
+Retrieval uses hierarchical chunking: child chunks (200 chars) for retrieval precision, parent chunks (2000 chars) for context completeness. The retriever uses MMR (Maximal Marginal Relevance) with `k=12`, `fetch_k=30`, `lambda_mult=0.7` to balance relevance and diversity across source books. These are configurable via `RETRIEVER_K`, `RETRIEVER_FETCH_K`, `RETRIEVER_LAMBDA_MULT` env vars.
 
 - **Vector store**: Chroma with persistent storage in `./data/chroma`. `BatchedChroma` subclass auto-splits writes into batches of 100 to avoid SQLite variable limits.
 - **Docstore**: `LocalFileStore` at `./data/docstore/` stores parent documents. Passed as `byte_store=` to `ParentDocumentRetriever` (NOT `docstore=`), which wraps it with `create_kv_docstore` for automatic `Document` serialization/deserialization via langchain `dumps`/`loads`.

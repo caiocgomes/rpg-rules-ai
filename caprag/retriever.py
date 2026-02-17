@@ -85,5 +85,11 @@ def get_retriever() -> ParentDocumentRetriever:
         byte_store=get_docstore(),
         child_splitter=child_splitter,
         parent_splitter=parent_splitter,
+        search_type="mmr",
+        search_kwargs={
+            "k": settings.retriever_k,
+            "fetch_k": settings.retriever_fetch_k,
+            "lambda_mult": settings.retriever_lambda_mult,
+        },
     )
     return _retriever

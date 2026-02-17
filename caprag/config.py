@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o-mini"
     embedding_model: str = "text-embedding-3-large"
     retrieval_strategy: Literal["multi-hop", "multi-question"] = "multi-hop"
+    retriever_k: int = 12
+    retriever_fetch_k: int = 30
+    retriever_lambda_mult: float = 0.7
 
 
 settings = Settings()
