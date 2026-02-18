@@ -7,6 +7,97 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <link rel="stylesheet" href="/static/style.css">
     <script src="/static/htmx.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vis-network@9/standalone/umd/vis-network.min.js"></script>
+    <script>
+        function renderAnswer(el) {
+            var script = el.querySelector('script[type="text/markdown"]');
+            if (!script) return;
+            var md = script.textContent;
+            // Ensure blank line before markdown block elements
+            md = md.replace(/(#{1,6}\s)/g, '\n\n$1');
+            md = md.replace(/([^\n])\n(\d+\.\s)/g, '$1\n\n$2');
+            md = md.replace(/([^\n])\n([-*]\s)/g, '$1\n\n$2');
+            // Collapse triple+ newlines back to double
+            md = md.replace(/\n{3,}/g, '\n\n');
+            var html = marked.parse(md);
+            html = html.replace(/\[(\d+)\]/g, '<a href="#cite-$1" class="cite-marker">[$1]</a>');
+            el.innerHTML = html;
+        }
+        document.addEventListener('htmx:afterSwap', function(evt) {
+            evt.detail.target.querySelectorAll('.answer-text').forEach(renderAnswer);
+        });
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.answer-text').forEach(renderAnswer);
+        });
+
+        var ENTITY_COLORS = {
+            advantage: '#4CAF50', disadvantage: '#f44336', skill: '#2196F3',
+            technique: '#FF9800', maneuver: '#9C27B0', spell: '#00BCD4',
+            equipment: '#795548', modifier: '#607D8B', other: '#9E9E9E'
+        };
+
+        function openEntityGraph(btn) {
+            var docIds = btn.getAttribute('data-doc-ids');
+            if (!docIds) return;
+            var modal = btn.closest('.chat-bubble').querySelector('.entity-graph-modal');
+            if (!modal) return;
+            modal.style.display = 'block';
+            var container = modal.querySelector('.graph-container');
+            container.innerHTML = '<p>Loading graph...</p>';
+
+            fetch('/api/entity-graph?chunks=' + encodeURIComponent(docIds))
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (!data.nodes || data.nodes.length === 0) {
+                        container.innerHTML = '<p>No entities found for this answer.</p>';
+                        return;
+                    }
+                    var nodes = data.nodes.map(function(n) {
+                        if (n.type === 'book') {
+                            return {
+                                id: n.id, label: n.label, shape: 'box',
+                                color: { background: n.direct ? '#1565C0' : '#37474F', border: '#90CAF9' },
+                                font: { color: '#fff', size: 14, face: 'monospace' },
+                                borderWidth: n.direct ? 2 : 1
+                            };
+                        }
+                        var col = ENTITY_COLORS[n.entity_type] || '#9E9E9E';
+                        return {
+                            id: n.id, label: n.label, shape: 'dot', size: n.direct ? 16 : 10,
+                            color: { background: col, border: col },
+                            font: { color: '#eee', size: 12 },
+                            title: n.entity_type
+                        };
+                    });
+                    var edges = data.edges.map(function(e) {
+                        return {
+                            from: e.from, to: e.to,
+                            label: e.relation,
+                            color: { color: e.direct ? '#90CAF9' : '#555', opacity: e.direct ? 0.9 : 0.4 },
+                            font: { color: '#999', size: 9, strokeWidth: 0 },
+                            dashes: !e.direct, width: e.direct ? 2 : 1
+                        };
+                    });
+                    container.innerHTML = '';
+                    new vis.Network(container,
+                        { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) },
+                        {
+                            physics: { solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -40 } },
+                            interaction: { hover: true, tooltipDelay: 100 },
+                            layout: { improvedLayout: true }
+                        }
+                    );
+                })
+                .catch(function() {
+                    container.innerHTML = '<p>Error loading entity graph.</p>';
+                });
+        }
+
+        function closeEntityGraph(btn) {
+            btn.closest('.entity-graph-modal').style.display = 'none';
+        }
+    </script>
 </head>
 <body>
     <nav class="container">

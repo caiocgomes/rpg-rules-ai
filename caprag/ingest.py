@@ -33,6 +33,17 @@ def delete_book(book_name: str) -> None:
         for pid in parent_ids:
             docstore.mdelete([pid])
 
+    # Clean entity index
+    try:
+        from caprag.entity_index import EntityIndex
+        entity_idx = EntityIndex()
+        try:
+            entity_idx.delete_book_entities(book_name)
+        finally:
+            entity_idx.close()
+    except Exception as exc:
+        logger.warning("Failed to clean entity index for '%s': %s", book_name, exc)
+
     logger.info("Deleted book '%s' from index (%d parent chunks).", book_name, len(parent_ids))
 
 
@@ -61,22 +72,41 @@ def _get_all_metadatas() -> list[dict]:
 def get_books_metadata() -> list[dict]:
     """Return metadata for each indexed book.
 
-    Each entry has: book (name), chunk_count (int), has_source (bool).
+    Each entry has: book, chunk_count, parent_count, entity_count, has_source.
     """
-    counts: dict[str, int] = {}
+    chunk_counts: dict[str, int] = {}
+    parent_ids_per_book: dict[str, set] = {}
     for m in _get_all_metadatas():
         book = m.get("book")
         if book:
-            counts[book] = counts.get(book, 0) + 1
+            chunk_counts[book] = chunk_counts.get(book, 0) + 1
+            doc_id = m.get("doc_id")
+            if doc_id:
+                parent_ids_per_book.setdefault(book, set()).add(doc_id)
+
+    # Entity counts (best-effort, don't break if index unavailable)
+    entity_counts: dict[str, int] = {}
+    try:
+        from caprag.entity_index import EntityIndex
+        idx = EntityIndex()
+        try:
+            for book in chunk_counts:
+                entity_counts[book] = idx.get_book_entity_count(book)
+        finally:
+            idx.close()
+    except Exception as exc:
+        logger.debug("Entity index unavailable for metadata: %s", exc)
 
     sources_path = Path(settings.sources_dir)
     return [
         {
             "book": book,
             "chunk_count": count,
+            "parent_count": len(parent_ids_per_book.get(book, set())),
+            "entity_count": entity_counts.get(book, 0),
             "has_source": (sources_path / book).exists(),
         }
-        for book, count in sorted(counts.items())
+        for book, count in sorted(chunk_counts.items())
     ]
 
 

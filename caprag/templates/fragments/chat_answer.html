@@ -1,6 +1,14 @@
 <div class="chat-bubble assistant">
-    <div class="meta">CapaRAG</div>
-    <div class="answer-text">{{ answer.answer | regex_replace('\[(\d+)\]', '<a href="#cite-\\1" class="cite-marker">[\\1]</a>') | safe }}</div>
+    <div class="meta">
+        CapaRAG
+        {% if answer.doc_ids %}
+        <button class="entity-graph-btn" onclick="openEntityGraph(this)"
+                data-doc-ids="{{ answer.doc_ids | join(',') }}">
+            Entity Graph
+        </button>
+        {% endif %}
+    </div>
+    <div class="answer-text"><script type="text/markdown">{{ answer.answer }}</script></div>
 
     {% if answer.citations %}
     <div class="citations-block">
@@ -8,7 +16,11 @@
         <div class="citation-ref" id="cite-{{ c.index }}">
             <span class="cite-index">[{{ c.index }}]</span>
             <span class="cite-source">{{ c.source }}</span>
+            {% if c.context_html %}
+            <div class="citation-context">{{ c.context_html | safe }}</div>
+            {% else %}
             <blockquote>{{ c.quote }}</blockquote>
+            {% endif %}
         </div>
         {% endfor %}
     </div>
@@ -25,4 +37,12 @@
         {% endfor %}
     </p>
     {% endif %}
+
+    <div class="entity-graph-modal" style="display:none;">
+        <div class="graph-header">
+            <strong>Entity Graph</strong>
+            <button class="close-graph" onclick="closeEntityGraph(this)">&times;</button>
+        </div>
+        <div class="graph-container"></div>
+    </div>
 </div>

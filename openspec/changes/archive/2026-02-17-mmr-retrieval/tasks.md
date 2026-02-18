@@ -8,7 +8,7 @@
 
 - [x] 2.1 Write test verifying retriever is configured with MMR search type
 - [x] 2.2 Write test verifying search_kwargs are passed correctly from config
-- [ ] 2.3 Manual test: run query and verify results come from multiple books
+- [x] 2.3 Manual test: run query and verify results come from multiple books
 
 ## 3. Documentation
 

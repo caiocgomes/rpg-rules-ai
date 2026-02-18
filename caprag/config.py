@@ -20,6 +20,16 @@ class Settings(BaseSettings):
     retriever_k: int = 12
     retriever_fetch_k: int = 30
     retriever_lambda_mult: float = 0.7
+    child_chunk_size: int = 512
+    child_chunk_overlap: int = 100
+    parent_chunk_max: int = 4000
+    parent_chunk_overlap: int = 100
+    enable_contextual_embeddings: bool = False
+    enable_entity_extraction: bool = False
+    enable_entity_retrieval: bool = True
+    context_model: str = "gpt-4o-mini"
+    entity_extraction_model: str = "gpt-4o-mini"
+    entity_index_path: str = "./data/entity_index.db"
 
 
 settings = Settings()

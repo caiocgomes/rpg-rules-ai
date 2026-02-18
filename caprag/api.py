@@ -113,6 +113,28 @@ def delete_document(book: str):
     return {"deleted": book}
 
 
+# --- Entity Graph ---
+
+
+@api_router.get("/entity-graph")
+def entity_graph(chunks: str = ""):
+    """Return entity graph for given chunk doc_ids (comma-separated)."""
+    if not chunks:
+        return {"nodes": [], "edges": []}
+    chunk_ids = [c.strip() for c in chunks.split(",") if c.strip()]
+    if not chunk_ids:
+        return {"nodes": [], "edges": []}
+    try:
+        from caprag.entity_index import EntityIndex
+        idx = EntityIndex()
+        try:
+            return idx.build_graph_for_chunks(chunk_ids)
+        finally:
+            idx.close()
+    except Exception:
+        return {"nodes": [], "edges": []}
+
+
 # --- Prompts ---
 
 

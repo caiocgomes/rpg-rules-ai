@@ -5,8 +5,8 @@ from langchain_classic.retrievers import ParentDocumentRetriever
 from langchain_classic.storage import LocalFileStore
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+from caprag.chunking import get_child_splitter, get_parent_splitter
 from caprag.config import settings
 
 _retriever = None
@@ -73,18 +73,11 @@ def get_retriever() -> ParentDocumentRetriever:
 
     vectorstore = get_vectorstore()
 
-    child_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=200, chunk_overlap=40, add_start_index=True
-    )
-    parent_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=2000, chunk_overlap=400, add_start_index=True
-    )
-
     _retriever = ParentDocumentRetriever(
         vectorstore=vectorstore,
         byte_store=get_docstore(),
-        child_splitter=child_splitter,
-        parent_splitter=parent_splitter,
+        child_splitter=get_child_splitter(),
+        parent_splitter=get_parent_splitter(),
         search_type="mmr",
         search_kwargs={
             "k": settings.retriever_k,

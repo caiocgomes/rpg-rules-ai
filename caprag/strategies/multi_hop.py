@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import logging
 from typing import List
 
 from langchain_core.documents import Document
@@ -11,6 +12,8 @@ from caprag.prompts import get_multi_question_prompt
 from caprag.retriever import get_retriever
 from caprag.schemas import LLMQuestions, Question, Questions, State
 from caprag.strategies.base import RetrievalStrategy
+
+logger = logging.getLogger(__name__)
 
 MAX_HOPS = 3
 
@@ -88,6 +91,12 @@ class MultiHopStrategy(RetrievalStrategy):
         # Iterative hops
         analyzer = llm.with_structured_output(SufficiencyAnalysis)
         for hop in range(MAX_HOPS - 1):  # -1 because we already did hop 1
+            # Cross-book entity lookup between hops
+            entity_questions = self._entity_cross_book_queries(all_docs)
+            if entity_questions:
+                await self._retrieve_batch(retriever, entity_questions, all_docs)
+                questions.questions.extend(entity_questions)
+
             context_text = self._format_context(all_docs)
             analysis = await analyzer.ainvoke(
                 ANALYZER_PROMPT.format(question=main_question, context=context_text)
@@ -123,6 +132,69 @@ class MultiHopStrategy(RetrievalStrategy):
         for docs in results:
             new_docs = _deduplicate(accumulated, docs)
             accumulated.extend(new_docs)
+
+    def _entity_cross_book_queries(self, docs: List[Document]) -> List[Question]:
+        """Look up entities from retrieved chunks in the entity index.
+
+        Returns targeted retrieval queries for cross-book mentions not yet in context.
+        """
+        if not settings.enable_entity_retrieval:
+            return []
+
+        try:
+            from caprag.entity_index import EntityIndex
+            index = EntityIndex()
+        except Exception:
+            logger.debug("Entity index not available, skipping cross-book lookup")
+            return []
+
+        try:
+            # Collect chunk_ids and books already in context
+            chunk_ids = set()
+            books_in_context = set()
+            for doc in docs:
+                cid = doc.metadata.get("doc_id", "")
+                if cid:
+                    chunk_ids.add(cid)
+                book = doc.metadata.get("book", "")
+                if book:
+                    books_in_context.add(book)
+
+            # Look up entity names from chunks already retrieved
+            entity_names = set()
+            for cid in chunk_ids:
+                mentions = index.query_entity_by_chunk(cid)
+                for m in mentions:
+                    entity_names.add(m.entity_name)
+
+            if not entity_names:
+                return []
+
+            # Find cross-book mentions
+            all_cross: list = []
+            for book in books_in_context:
+                cross = index.query_cross_book(list(entity_names), exclude_book=book)
+                all_cross.extend(cross)
+
+            # Build targeted queries for books not yet in context
+            target_books: dict[str, set[str]] = {}
+            for mention in all_cross:
+                if mention.book not in books_in_context:
+                    target_books.setdefault(mention.book, set()).add(mention.entity_name)
+
+            questions = []
+            for book, entities in target_books.items():
+                entity_list = ", ".join(sorted(entities)[:5])
+                questions.append(
+                    Question(question=f"{entity_list} in {book}")
+                )
+
+            return questions
+        except Exception as exc:
+            logger.warning("Entity cross-book lookup failed: %s", exc)
+            return []
+        finally:
+            index.close()
 
     def _format_context(self, docs: List[Document]) -> str:
         return "\n\n".join(

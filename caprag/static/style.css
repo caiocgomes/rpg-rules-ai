@@ -86,6 +86,25 @@
     opacity: 0.85;
 }
 
+.citation-context {
+    margin: 0.25rem 0 0 0;
+    padding: 0.5rem;
+    font-size: 0.9rem;
+    opacity: 0.85;
+    max-height: 200px;
+    overflow-y: auto;
+    line-height: 1.5;
+    white-space: pre-wrap;
+}
+
+.citation-context mark {
+    background: color-mix(in srgb, var(--pico-primary) 25%, transparent);
+    color: inherit;
+    font-weight: 600;
+    padding: 0.1rem 0;
+    border-radius: 2px;
+}
+
 /* Progress bar */
 .progress-container {
     margin: 1rem 0;
@@ -129,6 +148,62 @@ nav a.active {
 .htmx-request .htmx-indicator,
 .htmx-request.htmx-indicator {
     display: inline-block;
+}
+
+/* Entity graph button */
+.entity-graph-btn {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    margin-left: 0.5rem;
+    font-size: 0.75rem;
+    border: 1px solid var(--pico-primary);
+    border-radius: 0.25rem;
+    background: transparent;
+    color: var(--pico-primary);
+    cursor: pointer;
+    vertical-align: middle;
+}
+
+.entity-graph-btn:hover {
+    background: var(--pico-primary);
+    color: var(--pico-primary-inverse);
+}
+
+/* Entity graph modal */
+.entity-graph-modal {
+    margin-top: 1rem;
+    border: 1px solid var(--pico-muted-border-color);
+    border-radius: 0.5rem;
+    background: var(--pico-background-color);
+    overflow: hidden;
+}
+
+.graph-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--pico-muted-border-color);
+}
+
+.close-graph {
+    background: none;
+    border: none;
+    color: var(--pico-muted-color);
+    font-size: 1.25rem;
+    cursor: pointer;
+    padding: 0 0.25rem;
+    margin: 0;
+    line-height: 1;
+}
+
+.close-graph:hover {
+    color: var(--pico-color);
+}
+
+.graph-container {
+    height: 400px;
+    width: 100%;
 }
 
 /* See also tags */

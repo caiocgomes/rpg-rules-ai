@@ -1,7 +1,8 @@
-"""Layered ingestion pipeline: parse → split → embed → store."""
+"""Layered ingestion pipeline: parse → split → [contextualize] → embed → store."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from collections.abc import Callable
@@ -11,8 +12,8 @@ from typing import Literal
 from langchain_community.document_loaders import UnstructuredMarkdownLoader
 from langchain_core.documents import Document
 from langchain_openai import OpenAIEmbeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+from caprag.chunking import split_into_sections, split_parents_into_children, split_sections_into_parents
 from caprag.config import settings
 from caprag.retriever import CHROMA_BATCH_LIMIT, get_docstore, get_vectorstore
 
@@ -87,11 +88,24 @@ def run_layered_pipeline(
         # Phase 2: Split
         parent_chunks, child_chunks, parent_map = _phase_split(all_docs, progress)
 
+        # Phase 2.5: Contextualize (optional)
+        if settings.enable_contextual_embeddings:
+            child_chunks = _phase_contextualize(child_chunks, parent_map, progress)
+
+        # Phase 2.6: Entity extraction (optional)
+        entity_results = None
+        if settings.enable_entity_extraction:
+            entity_results = _phase_extract_entities(parent_chunks, all_docs, progress)
+
         # Phase 3: Embed
         embeddings = _phase_embed(child_chunks, progress)
 
         # Phase 4: Store
         _phase_store(child_chunks, embeddings, parent_map, progress)
+
+        # Phase 4.5: Store entities (if extracted)
+        if entity_results is not None:
+            _phase_store_entities(entity_results, progress)
 
         progress.status = "done"
         progress._notify()
@@ -109,7 +123,11 @@ def _phase_parse(
     replace: bool,
     progress: PhaseProgress,
 ) -> tuple[list[Document], list[str]]:
-    """Phase 1: Parse all markdown files."""
+    """Phase 1: Parse markdown and PDF files.
+
+    PDF files are extracted via pymupdf4llm and post-processed to detect headers.
+    Markdown files continue through UnstructuredMarkdownLoader.
+    """
     from caprag.ingest import delete_book, get_indexed_books
 
     progress.start_phase("parsing", len(paths))
@@ -128,10 +146,18 @@ def _phase_parse(
                     progress.advance()
                     continue
 
-            loader = UnstructuredMarkdownLoader(str(path))
-            docs = loader.load()
-            for doc in docs:
-                doc.metadata["book"] = book_name
+            if path.suffix.lower() == ".pdf":
+                from caprag.extraction import clean_page_artifacts, extract_pdf, postprocess_headers
+
+                raw_md = extract_pdf(path)
+                md = postprocess_headers(clean_page_artifacts(raw_md))
+                docs = [Document(page_content=md, metadata={"book": book_name, "source": str(path)})]
+            else:
+                loader = UnstructuredMarkdownLoader(str(path))
+                docs = loader.load()
+                for doc in docs:
+                    doc.metadata["book"] = book_name
+
             all_docs.extend(docs)
             book_names.append(book_name)
             progress.record_file(book_name, "success")
@@ -147,31 +173,65 @@ def _phase_split(
     docs: list[Document],
     progress: PhaseProgress,
 ) -> tuple[list[Document], list[Document], dict[str, Document]]:
-    """Phase 2: Split into parent and child chunks with ID mapping."""
-    parent_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=2000, chunk_overlap=400, add_start_index=True
-    )
-    child_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=200, chunk_overlap=40, add_start_index=True
-    )
+    """Phase 2: Section-aware splitting into parent and child chunks.
 
-    parent_chunks = parent_splitter.split_documents(docs)
-    progress.start_phase("splitting", len(parent_chunks))
+    For each document: split markdown into sections by headers, then split
+    large sections into parent chunks, then split parents into child chunks
+    with doc_id linkage.
+    """
+    progress.start_phase("splitting", len(docs))
 
-    child_chunks: list[Document] = []
-    parent_map: dict[str, Document] = {}
-
-    for parent in parent_chunks:
-        parent_id = str(uuid.uuid4())
-        parent_map[parent_id] = parent
-
-        children = child_splitter.split_documents([parent])
-        for child in children:
-            child.metadata["doc_id"] = parent_id
-        child_chunks.extend(children)
+    all_parents: list[Document] = []
+    for doc in docs:
+        book_name = doc.metadata.get("book", "")
+        sections = split_into_sections(doc.page_content)
+        for section in sections:
+            section.metadata["book"] = book_name
+        parents = split_sections_into_parents(sections)
+        for parent in parents:
+            if "book" not in parent.metadata:
+                parent.metadata["book"] = book_name
+        all_parents.extend(parents)
         progress.advance()
 
-    return parent_chunks, child_chunks, parent_map
+    child_chunks, parent_map = split_parents_into_children(all_parents)
+    return all_parents, child_chunks, parent_map
+
+
+def _phase_contextualize(
+    child_chunks: list[Document],
+    parent_map: dict[str, Document],
+    progress: PhaseProgress,
+) -> list[Document]:
+    """Phase 2.5: Generate context prefixes for child chunks using their parents."""
+    from caprag.contextualize import contextualize_batch
+
+    progress.start_phase("contextualizing", len(child_chunks))
+
+    items: list[tuple[Document, Document, str]] = []
+    for child in child_chunks:
+        parent_id = child.metadata.get("doc_id", "")
+        parent = parent_map.get(parent_id)
+        if parent is None:
+            items.append((child, child, child.metadata.get("book", "")))
+        else:
+            items.append((parent, child, child.metadata.get("book", "")))
+
+    prefixes = asyncio.run(
+        contextualize_batch(items, model=settings.context_model)
+    )
+
+    enriched: list[Document] = []
+    for child, prefix in zip(child_chunks, prefixes):
+        if prefix:
+            new_metadata = {**child.metadata, "original_text": child.page_content, "context_prefix": prefix}
+            enriched_content = prefix + "\n\n" + child.page_content
+            enriched.append(Document(page_content=enriched_content, metadata=new_metadata))
+        else:
+            enriched.append(child)
+        progress.advance()
+
+    return enriched
 
 
 def _phase_embed(
@@ -230,3 +290,56 @@ def _phase_store(
         (pid, dumps(parent).encode("utf-8"))
         for pid, parent in parent_map.items()
     ])
+
+
+def _phase_extract_entities(
+    parent_chunks: list[Document],
+    all_docs: list[Document],
+    progress: PhaseProgress,
+) -> list[tuple[str, str, list[dict]]]:
+    """Phase 2.6: Extract entities from parent chunks via LLM.
+
+    Returns list of (book_name, parent_doc_id, entities) tuples.
+    """
+    from caprag.entity_extractor import extract_entities_batch
+
+    items: list[tuple[Document, str]] = []
+    parent_ids: list[str] = []
+    for parent in parent_chunks:
+        book = parent.metadata.get("book", "")
+        doc_id = parent.metadata.get("doc_id", "")
+        items.append((parent, book))
+        parent_ids.append(doc_id)
+
+    progress.start_phase("extracting_entities", len(items))
+
+    batch_results = asyncio.run(
+        extract_entities_batch(items, model=settings.context_model)
+    )
+
+    results: list[tuple[str, str, list[dict]]] = []
+    for i, entities in enumerate(batch_results):
+        book = items[i][1]
+        pid = parent_ids[i]
+        results.append((book, pid, entities))
+        progress.advance()
+
+    return results
+
+
+def _phase_store_entities(
+    entity_results: list[tuple[str, str, list[dict]]],
+    progress: PhaseProgress,
+) -> None:
+    """Phase 4.5: Store extracted entities in the entity index."""
+    from caprag.entity_index import EntityIndex
+
+    progress.start_phase("storing_entities", len(entity_results))
+    index = EntityIndex()
+    try:
+        for book, chunk_id, entities in entity_results:
+            if entities:
+                index.add_entities(book, chunk_id, entities)
+            progress.advance()
+    finally:
+        index.close()

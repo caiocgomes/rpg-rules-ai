@@ -43,15 +43,15 @@ def test_get_vectorstore_returns_cached(mock_chroma_cls, mock_embeddings_cls):
     mock_chroma_cls.assert_called_once()
 
 
-@patch("caprag.retriever.LocalFileStore")
-@patch("caprag.retriever.RecursiveCharacterTextSplitter")
+@patch("caprag.retriever.get_child_splitter")
+@patch("caprag.retriever.get_parent_splitter")
 @patch("caprag.retriever.ParentDocumentRetriever")
 @patch("caprag.retriever.get_vectorstore")
-def test_get_retriever_creates_instance(mock_get_vs, mock_pdr_cls, mock_splitter_cls, mock_store_cls):
+@patch("caprag.retriever.get_docstore")
+def test_get_retriever_creates_instance(mock_get_ds, mock_get_vs, mock_pdr_cls, mock_parent_sp, mock_child_sp):
     mock_vs = MagicMock()
     mock_get_vs.return_value = mock_vs
-    mock_store = MagicMock()
-    mock_store_cls.return_value = mock_store
+    mock_get_ds.return_value = MagicMock()
     mock_pdr = MagicMock()
     mock_pdr_cls.return_value = mock_pdr
 
@@ -59,7 +59,8 @@ def test_get_retriever_creates_instance(mock_get_vs, mock_pdr_cls, mock_splitter
 
     assert result is mock_pdr
     mock_get_vs.assert_called_once()
-    assert mock_splitter_cls.call_count == 2  # child + parent
+    mock_child_sp.assert_called_once()
+    mock_parent_sp.assert_called_once()
     mock_pdr_cls.assert_called_once()
 
 
@@ -74,13 +75,14 @@ def test_get_retriever_returns_cached(mock_get_vs):
     mock_get_vs.assert_not_called()
 
 
-@patch("caprag.retriever.LocalFileStore")
-@patch("caprag.retriever.RecursiveCharacterTextSplitter")
+@patch("caprag.retriever.get_child_splitter")
+@patch("caprag.retriever.get_parent_splitter")
 @patch("caprag.retriever.ParentDocumentRetriever")
 @patch("caprag.retriever.get_vectorstore")
-def test_get_retriever_uses_mmr_search_type(mock_get_vs, mock_pdr_cls, mock_splitter_cls, mock_store_cls):
+@patch("caprag.retriever.get_docstore")
+def test_get_retriever_uses_mmr_search_type(mock_get_ds, mock_get_vs, mock_pdr_cls, mock_parent_sp, mock_child_sp):
     mock_get_vs.return_value = MagicMock()
-    mock_store_cls.return_value = MagicMock()
+    mock_get_ds.return_value = MagicMock()
     mock_pdr_cls.return_value = MagicMock()
 
     retriever_module.get_retriever()
@@ -89,13 +91,14 @@ def test_get_retriever_uses_mmr_search_type(mock_get_vs, mock_pdr_cls, mock_spli
     assert call_kwargs["search_type"] == "mmr"
 
 
-@patch("caprag.retriever.LocalFileStore")
-@patch("caprag.retriever.RecursiveCharacterTextSplitter")
+@patch("caprag.retriever.get_child_splitter")
+@patch("caprag.retriever.get_parent_splitter")
 @patch("caprag.retriever.ParentDocumentRetriever")
 @patch("caprag.retriever.get_vectorstore")
-def test_get_retriever_passes_search_kwargs_from_config(mock_get_vs, mock_pdr_cls, mock_splitter_cls, mock_store_cls):
+@patch("caprag.retriever.get_docstore")
+def test_get_retriever_passes_search_kwargs_from_config(mock_get_ds, mock_get_vs, mock_pdr_cls, mock_parent_sp, mock_child_sp):
     mock_get_vs.return_value = MagicMock()
-    mock_store_cls.return_value = MagicMock()
+    mock_get_ds.return_value = MagicMock()
     mock_pdr_cls.return_value = MagicMock()
 
     retriever_module.get_retriever()

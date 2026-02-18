@@ -6,7 +6,12 @@ import pytest
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage
 
-from caprag.graph import _validate_citations
+from caprag.graph import (
+    _enrich_citations_with_context,
+    _find_best_substring,
+    _ground_citations,
+    _validate_citations,
+)
 from caprag.schemas import AnswerWithSources, Question, Questions, State
 
 
@@ -168,9 +173,13 @@ async def test_generate_multiple_questions_multiple_docs(
     )
 
     answer: AnswerWithSources = {
-        "answer": "Combined answer.",
+        "answer": "Rule A applies [1]. Rule B expands [2]. Rule C adds [3].",
         "sources": ["Book1", "Book2", "Book3"],
-        "citations": [],
+        "citations": [
+            {"index": 1, "quote": "Rule A.", "source": "Book1"},
+            {"index": 2, "quote": "Rule B.", "source": "Book2"},
+            {"index": 3, "quote": "Rule C.", "source": "Book3"},
+        ],
         "see_also": [],
     }
 
@@ -267,9 +276,12 @@ async def test_generate_deduplicates_docs(mock_get_llm, mock_get_prompt):
     )
 
     answer: AnswerWithSources = {
-        "answer": "Answer.",
+        "answer": "Same rule applies [1] and different rule too [2].",
         "sources": ["BookA", "BookB"],
-        "citations": [],
+        "citations": [
+            {"index": 1, "quote": "Same rule.", "source": "BookA"},
+            {"index": 2, "quote": "Different rule.", "source": "BookB"},
+        ],
         "see_also": [],
     }
 
@@ -299,6 +311,92 @@ async def test_generate_deduplicates_docs(mock_get_llm, mock_get_prompt):
     assert "[1] Source: BookA" in context
     assert "[2] Source: BookB" in context
     assert "[3]" not in context
+
+
+@pytest.mark.asyncio
+@patch("caprag.graph.get_rag_prompt")
+@patch("caprag.graph._get_llm")
+async def test_generate_retries_on_missing_citations(mock_get_llm, mock_get_prompt):
+    """When LLM returns no citations with context available, retry once."""
+    doc = Document(page_content="GURPS uses 3d6.", metadata={"book": "GURPS Basic"})
+    questions = Questions(
+        questions=[Question(question="How?", context=[doc])]
+    )
+
+    no_citations: AnswerWithSources = {
+        "answer": "GURPS uses 3d6.",
+        "sources": ["GURPS Basic"],
+        "citations": [],
+        "see_also": [],
+    }
+    with_citations: AnswerWithSources = {
+        "answer": "GURPS uses 3d6 [1].",
+        "sources": ["GURPS Basic"],
+        "citations": [{"index": 1, "quote": "GURPS uses 3d6.", "source": "GURPS Basic"}],
+        "see_also": [],
+    }
+
+    mock_prompt = MagicMock()
+    mock_prompt.ainvoke = AsyncMock(return_value=MagicMock(messages=[]))
+    mock_get_prompt.return_value = mock_prompt
+
+    mock_structured = MagicMock()
+    mock_structured.ainvoke = AsyncMock(side_effect=[no_citations, with_citations])
+
+    mock_llm = MagicMock()
+    mock_llm.with_structured_output.return_value = mock_structured
+    mock_get_llm.return_value = mock_llm
+
+    state = {"main_question": "How?", "questions": questions, "messages": []}
+
+    from caprag.graph import generate
+
+    result = await generate(state)
+
+    assert mock_structured.ainvoke.await_count == 2
+    assert len(result["answer"]["citations"]) == 1
+    assert "[1]" in result["answer"]["answer"]
+
+
+@pytest.mark.asyncio
+@patch("caprag.graph.get_rag_prompt")
+@patch("caprag.graph._get_llm")
+async def test_generate_fallback_on_persistent_missing_citations(
+    mock_get_llm, mock_get_prompt
+):
+    """When retry also fails, return fallback response."""
+    doc = Document(page_content="Some rule.", metadata={"book": "Book"})
+    questions = Questions(
+        questions=[Question(question="Q?", context=[doc])]
+    )
+
+    no_citations: AnswerWithSources = {
+        "answer": "Answer without markers.",
+        "sources": ["Book"],
+        "citations": [],
+        "see_also": [],
+    }
+
+    mock_prompt = MagicMock()
+    mock_prompt.ainvoke = AsyncMock(return_value=MagicMock(messages=[]))
+    mock_get_prompt.return_value = mock_prompt
+
+    mock_structured = MagicMock()
+    mock_structured.ainvoke = AsyncMock(return_value=no_citations)
+
+    mock_llm = MagicMock()
+    mock_llm.with_structured_output.return_value = mock_structured
+    mock_get_llm.return_value = mock_llm
+
+    state = {"main_question": "Q?", "questions": questions, "messages": []}
+
+    from caprag.graph import generate
+
+    result = await generate(state)
+
+    assert mock_structured.ainvoke.await_count == 2
+    assert "could not produce" in result["answer"]["answer"]
+    assert result["answer"]["citations"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -336,6 +434,24 @@ def test_validate_citations_orphan_citations_removed():
     result = _validate_citations(response)
     assert len(result["citations"]) == 1
     assert result["citations"][0]["index"] == 1
+    # Sources should only include books with surviving citations
+    assert result["sources"] == ["Book1"]
+
+
+def test_validate_citations_sources_derived_from_citations():
+    """LLM lists two books in sources but only cites one — sources should shrink."""
+    response: AnswerWithSources = {
+        "answer": "The base rule is clear [1]. Advanced rules expand on it [2].",
+        "sources": ["GURPS Basic", "GURPS Martial Arts"],
+        "citations": [
+            {"index": 1, "quote": "Base rule", "source": "GURPS Basic"},
+            {"index": 2, "quote": "Advanced rule", "source": "GURPS Basic"},
+        ],
+        "see_also": [],
+    }
+    result = _validate_citations(response)
+    assert result["sources"] == ["GURPS Basic"]
+    assert "GURPS Martial Arts" not in result["sources"]
 
 
 def test_validate_citations_orphan_markers_cleaned():
@@ -377,6 +493,195 @@ def test_validate_citations_empty_citations():
     result = _validate_citations(response)
     assert result["answer"] == "No info available."
     assert result["citations"] == []
+
+
+# ---------------------------------------------------------------------------
+# _find_best_substring
+# ---------------------------------------------------------------------------
+
+
+def test_find_best_substring_exact_match():
+    haystack = "Rapid Strike allows you to make two melee attacks per turn at -6 each."
+    needle = "two melee attacks per turn at -6 each"
+    result = _find_best_substring(needle, haystack)
+    assert result == "two melee attacks per turn at -6 each"
+
+
+def test_find_best_substring_case_insensitive():
+    haystack = "The DX penalty is -4 for this maneuver."
+    needle = "the dx penalty is -4"
+    result = _find_best_substring(needle, haystack)
+    assert result is not None
+    assert result.lower() == "the dx penalty is -4"
+
+
+def test_find_best_substring_paraphrased():
+    haystack = "Rapid Strike allows the character to make two melee attacks in a single turn, each at -6 to skill."
+    needle = "Rapid Strike lets a character make two melee attacks in one turn, each at -6 to skill."
+    result = _find_best_substring(needle, haystack)
+    assert result is not None
+    # Should return the actual text from haystack, not the needle
+    assert result in haystack
+
+
+def test_find_best_substring_no_match():
+    haystack = "This passage is about cooking recipes."
+    needle = "Rapid Strike allows two attacks at -6 each."
+    result = _find_best_substring(needle, haystack)
+    assert result is None
+
+
+def test_find_best_substring_empty_inputs():
+    assert _find_best_substring("", "some text") is None
+    assert _find_best_substring("needle", "") is None
+    assert _find_best_substring("", "") is None
+
+
+# ---------------------------------------------------------------------------
+# _ground_citations
+# ---------------------------------------------------------------------------
+
+
+def test_ground_citations_replaces_paraphrased_quote():
+    original_text = "Rapid Strike (p. B370) allows you to make two melee attacks per turn, each at -6 to skill."
+    response = {
+        "answer": "Rapid Strike gives two attacks at -6 [1].",
+        "sources": ["GURPS Basic"],
+        "citations": [
+            {
+                "index": 1,
+                "quote": "Rapid Strike allows you to make two melee attacks per turn each at -6 to skill",
+                "source": "GURPS Basic",
+            }
+        ],
+        "see_also": [],
+    }
+    context_map = {1: original_text}
+    result = _ground_citations(response, context_map)
+    # The quote should now be from the original text
+    assert result["citations"][0]["quote"] in original_text
+
+
+def test_ground_citations_preserves_exact_quote():
+    original_text = "DX-based skill. Defaults: DX-5 or Karate-4."
+    response = {
+        "answer": "It defaults to DX-5 [1].",
+        "sources": ["Book"],
+        "citations": [
+            {"index": 1, "quote": "Defaults: DX-5 or Karate-4.", "source": "Book"}
+        ],
+        "see_also": [],
+    }
+    context_map = {1: original_text}
+    result = _ground_citations(response, context_map)
+    assert result["citations"][0]["quote"] == "Defaults: DX-5 or Karate-4."
+
+
+def test_ground_citations_no_context_map():
+    response = {
+        "answer": "Answer [1].",
+        "sources": ["Book"],
+        "citations": [{"index": 1, "quote": "some quote", "source": "Book"}],
+        "see_also": [],
+    }
+    result = _ground_citations(response, {})
+    assert result["citations"][0]["quote"] == "some quote"
+
+
+def test_ground_citations_missing_index_in_map():
+    response = {
+        "answer": "Answer [1] and [2].",
+        "sources": ["Book"],
+        "citations": [
+            {"index": 1, "quote": "quote one", "source": "Book"},
+            {"index": 2, "quote": "quote two", "source": "Book"},
+        ],
+        "see_also": [],
+    }
+    context_map = {1: "The actual text for quote one is here."}
+    result = _ground_citations(response, context_map)
+    # Index 1 should be grounded, index 2 should be unchanged
+    assert result["citations"][0]["quote"] in "The actual text for quote one is here."
+    assert result["citations"][1]["quote"] == "quote two"
+
+
+def test_ground_citations_empty_citations():
+    response = {
+        "answer": "No citations.",
+        "sources": [],
+        "citations": [],
+        "see_also": [],
+    }
+    result = _ground_citations(response, {1: "text"})
+    assert result["citations"] == []
+
+
+# ---------------------------------------------------------------------------
+# _enrich_citations_with_context
+# ---------------------------------------------------------------------------
+
+
+def test_enrich_citations_quote_found():
+    response = {
+        "answer": "Answer [1].",
+        "sources": ["Book"],
+        "citations": [
+            {"index": 1, "quote": "two attacks at -6", "source": "Book"}
+        ],
+        "see_also": [],
+    }
+    context_map = {1: "Rapid Strike allows two attacks at -6 each turn."}
+    result = _enrich_citations_with_context(response, context_map)
+    html = result["citations"][0]["context_html"]
+    assert "<mark>" in html
+    assert "two attacks at -6" in html
+    assert "Rapid Strike allows" in html
+
+
+def test_enrich_citations_quote_not_found():
+    response = {
+        "answer": "Answer [1].",
+        "sources": ["Book"],
+        "citations": [
+            {"index": 1, "quote": "completely different text", "source": "Book"}
+        ],
+        "see_also": [],
+    }
+    context_map = {1: "Rapid Strike allows two attacks at -6 each turn."}
+    result = _enrich_citations_with_context(response, context_map)
+    html = result["citations"][0]["context_html"]
+    assert "<mark>" not in html
+    assert "Rapid Strike" in html
+
+
+def test_enrich_citations_no_context_map():
+    response = {
+        "answer": "Answer [1].",
+        "sources": ["Book"],
+        "citations": [
+            {"index": 1, "quote": "some quote", "source": "Book"}
+        ],
+        "see_also": [],
+    }
+    result = _enrich_citations_with_context(response, {})
+    assert "context_html" not in result["citations"][0]
+
+
+def test_enrich_citations_html_escapes_special_chars():
+    response = {
+        "answer": "Answer [1].",
+        "sources": ["Book"],
+        "citations": [
+            {"index": 1, "quote": "damage < 10", "source": "Book"}
+        ],
+        "see_also": [],
+    }
+    context_map = {1: "If damage < 10 & HP > 0, the character survives."}
+    result = _enrich_citations_with_context(response, context_map)
+    html = result["citations"][0]["context_html"]
+    assert "&lt;" in html
+    assert "&amp;" in html
+    assert "<mark>" in html
 
 
 # ---------------------------------------------------------------------------

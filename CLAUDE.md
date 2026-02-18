@@ -28,7 +28,7 @@ State flows through a `State` class extending `MessagesState` with typed fields:
 
 ### Storage Layer
 
-Retrieval uses hierarchical chunking: child chunks (200 chars) for retrieval precision, parent chunks (2000 chars) for context completeness. The retriever uses MMR (Maximal Marginal Relevance) with `k=12`, `fetch_k=30`, `lambda_mult=0.7` to balance relevance and diversity across source books. These are configurable via `RETRIEVER_K`, `RETRIEVER_FETCH_K`, `RETRIEVER_LAMBDA_MULT` env vars.
+Retrieval uses section-aware hierarchical chunking. Documents are first split by markdown headers (`##`, `###`) into semantic sections, then sections that exceed `PARENT_CHUNK_MAX` (default 4000 chars) are character-split into parent chunks, and finally parents are split into child chunks (`CHILD_CHUNK_SIZE` default 512, overlap 100) for retrieval precision. Parent chunks provide context completeness when retrieved via `doc_id` linkage. The retriever uses MMR (Maximal Marginal Relevance) with `k=12`, `fetch_k=30`, `lambda_mult=0.7` to balance relevance and diversity across source books. All chunk sizes and retriever params are configurable via env vars (`CHILD_CHUNK_SIZE`, `CHILD_CHUNK_OVERLAP`, `PARENT_CHUNK_MAX`, `PARENT_CHUNK_OVERLAP`, `RETRIEVER_K`, `RETRIEVER_FETCH_K`, `RETRIEVER_LAMBDA_MULT`). Splitter definitions are centralized in `caprag/chunking.py` and shared between the ingestion pipeline and the retriever.
 
 - **Vector store**: Chroma with persistent storage in `./data/chroma`. `BatchedChroma` subclass auto-splits writes into batches of 100 to avoid SQLite variable limits.
 - **Docstore**: `LocalFileStore` at `./data/docstore/` stores parent documents. Passed as `byte_store=` to `ParentDocumentRetriever` (NOT `docstore=`), which wraps it with `create_kv_docstore` for automatic `Document` serialization/deserialization via langchain `dumps`/`loads`.
@@ -81,13 +81,13 @@ The `config.py` module exports `OPENAI_API_KEY` to the environment on import so 
 
 ## Key Dependencies
 
-LangGraph (orchestration), langchain-classic (ParentDocumentRetriever, LocalFileStore), langchain-openai (LLM/embeddings with text-embedding-3-large), Chroma (vector store with persistence), Jinja2 + HTMX (frontend), pydantic-settings (configuration), unstructured[md] + nltk (document parsing). Managed via `uv` and `pyproject.toml`.
+LangGraph (orchestration), langchain-classic (ParentDocumentRetriever, LocalFileStore), langchain-openai (LLM/embeddings with text-embedding-3-large), Chroma (vector store with persistence), Jinja2 + HTMX (frontend), pydantic-settings (configuration), unstructured[md] + nltk (markdown parsing), pymupdf4llm (PDF extraction). Managed via `uv` and `pyproject.toml`.
 
 ## Document Ingestion
 
 Two upload paths: multipart upload via `POST /api/documents/upload` (20MB limit, .md only), or path-based ingest via `POST /api/documents/ingest`. Both create an `IngestionJob` that runs asynchronously and returns a `job_id` for progress polling via `GET /api/documents/jobs/{job_id}`.
 
-Ingestion uses a layered pipeline (`caprag/pipeline.py`): parse all files, split into parent/child chunks, embed in batches of 500, store in Chroma + docstore. Each phase reports progress separately. The pipeline handles errors per-file (one failure doesn't block others) and supports `replace` mode to delete existing book chunks before re-ingesting.
+Ingestion uses a layered pipeline (`caprag/pipeline.py`): parse → split → [contextualize] → embed → store. The parse phase detects file type: `.pdf` files go through `caprag/extraction.py` (`extract_pdf` via pymupdf4llm, then `postprocess_headers` to convert bold ALL-CAPS to `##` and bold+italic to `###`, then `clean_page_artifacts` to strip page numbers); `.md` files continue through `UnstructuredMarkdownLoader`. The split phase uses section-aware chunking from `caprag/chunking.py`: markdown headers → sections → parent chunks → child chunks with `doc_id` linkage. An optional contextualize phase (when `ENABLE_CONTEXTUAL_EMBEDDINGS=true`) prepends LLM-generated context to child chunks before embedding. Embedding runs in batches of 500. Each phase reports progress separately. The pipeline handles errors per-file (one failure doesn't block others) and supports `replace` mode to delete existing book chunks before re-ingesting.
 
 `caprag/ingest.py` provides `delete_book()` (removes from both vectorstore and docstore), `get_books_metadata()`, `get_indexed_books()`, and `reindex_directory()`. Full reindex clears the collection and re-runs the pipeline.
 

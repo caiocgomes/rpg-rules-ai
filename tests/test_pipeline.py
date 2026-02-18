@@ -1,7 +1,8 @@
 """Tests for the layered ingestion pipeline."""
 
+import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -36,6 +37,9 @@ def mock_infra():
     ):
         mock_ingest_settings.sources_dir = "/tmp/fake_sources"
         mock_pipeline_settings.embedding_model = "text-embedding-3-large"
+        mock_pipeline_settings.enable_contextual_embeddings = False
+        mock_pipeline_settings.enable_entity_extraction = False
+        mock_pipeline_settings.context_model = "gpt-4o-mini"
         yield {
             "vs": mock_vs,
             "collection": mock_collection,
@@ -137,3 +141,244 @@ class TestLayeredPipeline:
 
         assert result["status"] == "done"
         assert result["file_results"][0]["status"] == "skipped"
+
+
+class TestContextualEmbeddings:
+    def test_disabled_skips_contextualize_phase(self, tmp_path, mock_infra):
+        """When ENABLE_CONTEXTUAL_EMBEDDINGS=false, no contextualize phase runs."""
+        files = [_make_md(tmp_path, "Test.md", "# Test\nSome content.")]
+        phases_seen = []
+
+        def on_progress(data):
+            if data["phase"] and data["phase"] not in phases_seen:
+                phases_seen.append(data["phase"])
+
+        from caprag.pipeline import run_layered_pipeline
+        result = run_layered_pipeline(files, on_progress=on_progress)
+
+        assert result["status"] == "done"
+        assert "contextualizing" not in phases_seen
+
+    def test_enabled_runs_contextualize_phase(self, tmp_path, mock_infra):
+        """When ENABLE_CONTEXTUAL_EMBEDDINGS=true, contextualize phase runs and enriches chunks."""
+        # Re-patch settings to enable contextual embeddings
+        with patch("caprag.pipeline.settings") as mock_settings:
+            mock_settings.embedding_model = "text-embedding-3-large"
+            mock_settings.enable_contextual_embeddings = True
+            mock_settings.context_model = "gpt-4o-mini"
+
+            files = [_make_md(tmp_path, "Test.md", "# Test\nSome content here.")]
+            phases_seen = []
+
+            def on_progress(data):
+                if data["phase"] and data["phase"] not in phases_seen:
+                    phases_seen.append(data["phase"])
+
+            async def fake_batch(items, model="gpt-4o-mini"):
+                return [f"Context for chunk {i}." for i in range(len(items))]
+
+            with patch("caprag.contextualize.contextualize_batch", side_effect=fake_batch):
+                from caprag.pipeline import run_layered_pipeline
+                result = run_layered_pipeline(files, on_progress=on_progress)
+
+            assert result["status"] == "done"
+            assert "contextualizing" in phases_seen
+
+            # Check that stored chunks have enriched content
+            add_calls = mock_infra["collection"].add.call_args_list
+            for call in add_calls:
+                docs = call.kwargs.get("documents", call[1].get("documents", []))
+                metadatas = call.kwargs.get("metadatas", call[1].get("metadatas", []))
+                for doc, meta in zip(docs, metadatas):
+                    assert "Context for chunk" in doc
+                    assert "original_text" in meta
+                    assert "context_prefix" in meta
+
+    def test_enabled_preserves_original_text_in_metadata(self, tmp_path, mock_infra):
+        """Enriched chunks keep original text accessible via metadata."""
+        with patch("caprag.pipeline.settings") as mock_settings:
+            mock_settings.embedding_model = "text-embedding-3-large"
+            mock_settings.enable_contextual_embeddings = True
+            mock_settings.context_model = "gpt-4o-mini"
+
+            files = [_make_md(tmp_path, "Book.md", "# Book\nOriginal rule text.")]
+
+            async def fake_batch(items, model="gpt-4o-mini"):
+                return ["Prefix." for _ in items]
+
+            with patch("caprag.contextualize.contextualize_batch", side_effect=fake_batch):
+                from caprag.pipeline import run_layered_pipeline
+                result = run_layered_pipeline(files)
+
+            assert result["status"] == "done"
+            add_calls = mock_infra["collection"].add.call_args_list
+            for call in add_calls:
+                metadatas = call.kwargs.get("metadatas", call[1].get("metadatas", []))
+                for meta in metadatas:
+                    assert meta["original_text"] != ""
+                    assert "Prefix." not in meta["original_text"]
+
+
+def _make_pdf(tmp_path: Path, name: str) -> Path:
+    """Create a dummy .pdf file (content doesn't matter, pymupdf4llm will be mocked)."""
+    p = tmp_path / name
+    p.write_bytes(b"%PDF-1.4 dummy")
+    return p
+
+
+SAMPLE_PDF_MARKDOWN = """\
+**COMBAT**
+
+This chapter covers the rules for fighting.
+
+**MELEE ATTACKS**
+
+To make a melee attack, roll against your skill.
+
+***Rapid Strike***
+
+You may attempt two attacks on the same turn at -6 each.
+
+***Deceptive Attack***
+
+Trade skill for a penalty to the defender's active defense.
+
+**RANGED ATTACKS**
+
+Ranged attacks use DX-based weapon skills.
+"""
+
+
+class TestPdfPipeline:
+    def test_pdf_full_pipeline(self, tmp_path, mock_infra):
+        """PDF files go through extract_pdf -> postprocess_headers -> section-aware splitting."""
+        pdf_file = _make_pdf(tmp_path, "Rulebook.pdf")
+
+        mock_pymupdf = MagicMock()
+        mock_pymupdf.to_markdown.return_value = SAMPLE_PDF_MARKDOWN
+
+        with patch.dict(sys.modules, {"pymupdf4llm": mock_pymupdf}):
+            from caprag.pipeline import run_layered_pipeline
+            result = run_layered_pipeline([pdf_file])
+
+        assert result["status"] == "done"
+        assert result["file_results"][0]["filename"] == "Rulebook.pdf"
+        assert result["file_results"][0]["status"] == "success"
+        assert mock_infra["collection"].add.called
+        assert mock_infra["docstore"].mset.called
+
+    def test_pdf_produces_section_aware_chunks(self, tmp_path, mock_infra):
+        """Parent chunks from PDF should carry section header metadata from markdown splitting."""
+        pdf_file = _make_pdf(tmp_path, "Sections.pdf")
+
+        mock_pymupdf = MagicMock()
+        mock_pymupdf.to_markdown.return_value = SAMPLE_PDF_MARKDOWN
+
+        with patch.dict(sys.modules, {"pymupdf4llm": mock_pymupdf}):
+            from caprag.pipeline import run_layered_pipeline
+            run_layered_pipeline([pdf_file])
+
+        # Check that stored parents in docstore have section header metadata
+        mset_calls = mock_infra["docstore"].mset.call_args_list
+        assert len(mset_calls) > 0
+
+        # Check child chunks have doc_id linking to parents
+        add_calls = mock_infra["collection"].add.call_args_list
+        all_doc_ids = set()
+        for call in add_calls:
+            metadatas = call.kwargs.get("metadatas", call[1].get("metadatas", []))
+            for meta in metadatas:
+                assert "doc_id" in meta
+                all_doc_ids.add(meta["doc_id"])
+                assert meta.get("book") == "Sections.pdf"
+
+        parent_ids = set()
+        for call in mset_calls:
+            for pid, _ in call[0][0]:
+                parent_ids.add(pid)
+
+        assert all_doc_ids.issubset(parent_ids)
+
+    def test_mixed_pdf_and_md(self, tmp_path, mock_infra):
+        """Pipeline handles a mix of PDF and markdown files."""
+        md_file = _make_md(tmp_path, "Guide.md", "# Guide\nSome guidance content.")
+        pdf_file = _make_pdf(tmp_path, "Rules.pdf")
+
+        mock_pymupdf = MagicMock()
+        mock_pymupdf.to_markdown.return_value = "## COMBAT\nFight rules here."
+
+        with patch.dict(sys.modules, {"pymupdf4llm": mock_pymupdf}):
+            from caprag.pipeline import run_layered_pipeline
+            result = run_layered_pipeline([md_file, pdf_file])
+
+        assert result["status"] == "done"
+        statuses = {r["filename"]: r["status"] for r in result["file_results"]}
+        assert statuses["Guide.md"] == "success"
+        assert statuses["Rules.pdf"] == "success"
+
+    def test_pdf_extraction_error_isolation(self, tmp_path, mock_infra):
+        """A failing PDF doesn't block other files."""
+        good_md = _make_md(tmp_path, "Good.md", "# Good\nContent.")
+        bad_pdf = _make_pdf(tmp_path, "Bad.pdf")
+
+        mock_pymupdf = MagicMock()
+        mock_pymupdf.to_markdown.side_effect = RuntimeError("Corrupt PDF")
+
+        with patch.dict(sys.modules, {"pymupdf4llm": mock_pymupdf}):
+            from caprag.pipeline import run_layered_pipeline
+            result = run_layered_pipeline([good_md, bad_pdf])
+
+        assert result["status"] == "done"
+        statuses = {r["filename"]: r["status"] for r in result["file_results"]}
+        assert statuses["Good.md"] == "success"
+        assert statuses["Bad.pdf"] == "error"
+
+
+class TestEntityExtraction:
+    def test_disabled_skips_entity_phase(self, tmp_path, mock_infra):
+        files = [_make_md(tmp_path, "Test.md", "# Test\nSome content.")]
+        phases_seen = []
+
+        def on_progress(data):
+            if data["phase"] and data["phase"] not in phases_seen:
+                phases_seen.append(data["phase"])
+
+        from caprag.pipeline import run_layered_pipeline
+        result = run_layered_pipeline(files, on_progress=on_progress)
+
+        assert result["status"] == "done"
+        assert "extracting_entities" not in phases_seen
+        assert "storing_entities" not in phases_seen
+
+    def test_enabled_runs_entity_phases(self, tmp_path, mock_infra):
+        with patch("caprag.pipeline.settings") as mock_settings:
+            mock_settings.embedding_model = "text-embedding-3-large"
+            mock_settings.enable_contextual_embeddings = False
+            mock_settings.enable_entity_extraction = True
+            mock_settings.context_model = "gpt-4o-mini"
+
+            files = [_make_md(tmp_path, "Test.md", "# Test\nRapid Strike lets you attack twice.")]
+            phases_seen = []
+
+            def on_progress(data):
+                if data["phase"] and data["phase"] not in phases_seen:
+                    phases_seen.append(data["phase"])
+
+            async def fake_batch(items, model="gpt-4o-mini"):
+                return [[{"name": "Rapid Strike", "type": "maneuver", "mention_type": "defines"}] for _ in items]
+
+            with (
+                patch("caprag.entity_extractor.extract_entities_batch", side_effect=fake_batch),
+                patch("caprag.entity_index.EntityIndex") as mock_idx_cls,
+            ):
+                mock_idx = MagicMock()
+                mock_idx_cls.return_value = mock_idx
+
+                from caprag.pipeline import run_layered_pipeline
+                result = run_layered_pipeline(files, on_progress=on_progress)
+
+            assert result["status"] == "done"
+            assert "extracting_entities" in phases_seen
+            assert "storing_entities" in phases_seen
+            mock_idx.add_entities.assert_called()
+            mock_idx.close.assert_called()
