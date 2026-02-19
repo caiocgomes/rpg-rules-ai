@@ -1,4 +1,9 @@
-"""Layered ingestion pipeline: parse → split → [contextualize] → embed → store."""
+"""Layered ingestion pipeline with per-file processing for bounded memory usage.
+
+Each file goes through parse → split → [contextualize] → [entity extract+store] →
+embed+store before the next file starts. Embeddings are generated and stored in
+batches, never accumulated in memory.
+"""
 
 from __future__ import annotations
 
@@ -71,41 +76,37 @@ def run_layered_pipeline(
     replace: bool = False,
     on_progress: Callable | None = None,
 ) -> dict:
-    """Execute the full layered ingestion pipeline.
+    """Execute the ingestion pipeline, processing one file at a time.
 
-    Returns the final progress dict.
+    Each file goes through the full pipeline (parse → split → embed → store)
+    before the next file starts. This bounds peak memory to a single file's
+    worth of data.
     """
     progress = PhaseProgress(callback=on_progress)
 
     try:
-        # Phase 1: Parse
-        all_docs, book_names = _phase_parse(paths, replace, progress)
-        if not all_docs:
-            progress.status = "done"
-            progress._notify()
-            return progress.to_dict()
+        from rpg_rules_ai.ingest import delete_book, get_indexed_books
 
-        # Phase 2: Split
-        parent_chunks, child_chunks, parent_map = _phase_split(all_docs, progress)
+        indexed = get_indexed_books()
+        progress.start_phase("ingesting", len(paths))
 
-        # Phase 2.5: Contextualize (optional)
-        if settings.enable_contextual_embeddings:
-            child_chunks = _phase_contextualize(child_chunks, parent_map, progress)
+        for path in paths:
+            book_name = path.name
+            try:
+                if book_name in indexed:
+                    if replace:
+                        delete_book(book_name)
+                    else:
+                        progress.record_file(book_name, "skipped")
+                        progress.advance()
+                        continue
 
-        # Phase 2.6: Entity extraction (optional)
-        entity_results = None
-        if settings.enable_entity_extraction:
-            entity_results = _phase_extract_entities(parent_chunks, all_docs, progress)
-
-        # Phase 3: Embed
-        embeddings = _phase_embed(child_chunks, progress)
-
-        # Phase 4: Store
-        _phase_store(child_chunks, embeddings, parent_map, progress)
-
-        # Phase 4.5: Store entities (if extracted)
-        if entity_results is not None:
-            _phase_store_entities(entity_results, progress)
+                _process_single_file(path, book_name, progress)
+                progress.record_file(book_name, "success")
+            except Exception as exc:
+                logger.error("Failed to ingest '%s': %s", book_name, exc)
+                progress.record_file(book_name, "error", str(exc))
+            progress.advance()
 
         progress.status = "done"
         progress._notify()
@@ -118,72 +119,48 @@ def run_layered_pipeline(
     return progress.to_dict()
 
 
-def _phase_parse(
-    paths: list[Path],
-    replace: bool,
-    progress: PhaseProgress,
-) -> tuple[list[Document], list[str]]:
-    """Phase 1: Parse markdown and PDF files.
+def _process_single_file(path: Path, book_name: str, progress: PhaseProgress) -> None:
+    """Run the full pipeline for a single file: parse → split → embed+store."""
+    # Parse
+    docs = _parse_file(path, book_name)
 
-    PDF files are extracted via pymupdf4llm and post-processed to detect headers.
-    Markdown files continue through UnstructuredMarkdownLoader.
-    """
-    from rpg_rules_ai.ingest import delete_book, get_indexed_books
+    # Split
+    parents, children, parent_map = _split_docs(docs, book_name)
 
-    progress.start_phase("parsing", len(paths))
-    indexed = get_indexed_books()
-    all_docs: list[Document] = []
-    book_names: list[str] = []
+    # Contextualize (optional)
+    if settings.enable_contextual_embeddings:
+        children = _contextualize_chunks(children, parent_map)
 
-    for path in paths:
-        book_name = path.name
-        try:
-            if book_name in indexed:
-                if replace:
-                    delete_book(book_name)
-                else:
-                    progress.record_file(book_name, "skipped")
-                    progress.advance()
-                    continue
+    # Entity extraction + immediate store (optional)
+    if settings.enable_entity_extraction:
+        _extract_and_store_entities(parents)
 
-            if path.suffix.lower() == ".pdf":
-                from rpg_rules_ai.extraction import clean_page_artifacts, extract_pdf, postprocess_headers
-
-                raw_md = extract_pdf(path)
-                md = postprocess_headers(clean_page_artifacts(raw_md))
-                docs = [Document(page_content=md, metadata={"book": book_name, "source": str(path)})]
-            else:
-                loader = UnstructuredMarkdownLoader(str(path))
-                docs = loader.load()
-                for doc in docs:
-                    doc.metadata["book"] = book_name
-
-            all_docs.extend(docs)
-            book_names.append(book_name)
-            progress.record_file(book_name, "success")
-        except Exception as exc:
-            logger.error("Failed to parse '%s': %s", book_name, exc)
-            progress.record_file(book_name, "error", str(exc))
-        progress.advance()
-
-    return all_docs, book_names
+    # Embed and store (streaming: embed batch → store batch → discard)
+    _embed_and_store(children, parent_map)
 
 
-def _phase_split(
-    docs: list[Document],
-    progress: PhaseProgress,
+def _parse_file(path: Path, book_name: str) -> list[Document]:
+    """Parse a single file into Documents."""
+    if path.suffix.lower() == ".pdf":
+        from rpg_rules_ai.extraction import clean_page_artifacts, extract_pdf, postprocess_headers
+
+        raw_md = extract_pdf(path)
+        md = postprocess_headers(clean_page_artifacts(raw_md))
+        return [Document(page_content=md, metadata={"book": book_name, "source": str(path)})]
+
+    loader = UnstructuredMarkdownLoader(str(path))
+    docs = loader.load()
+    for doc in docs:
+        doc.metadata["book"] = book_name
+    return docs
+
+
+def _split_docs(
+    docs: list[Document], book_name: str
 ) -> tuple[list[Document], list[Document], dict[str, Document]]:
-    """Phase 2: Section-aware splitting into parent and child chunks.
-
-    For each document: split markdown into sections by headers, then split
-    large sections into parent chunks, then split parents into child chunks
-    with doc_id linkage.
-    """
-    progress.start_phase("splitting", len(docs))
-
+    """Split documents into parent and child chunks."""
     all_parents: list[Document] = []
     for doc in docs:
-        book_name = doc.metadata.get("book", "")
         sections = split_into_sections(doc.page_content)
         for section in sections:
             section.metadata["book"] = book_name
@@ -192,24 +169,20 @@ def _phase_split(
             if "book" not in parent.metadata:
                 parent.metadata["book"] = book_name
         all_parents.extend(parents)
-        progress.advance()
 
-    child_chunks, parent_map = split_parents_into_children(all_parents)
-    return all_parents, child_chunks, parent_map
+    children, parent_map = split_parents_into_children(all_parents)
+    return all_parents, children, parent_map
 
 
-def _phase_contextualize(
-    child_chunks: list[Document],
+def _contextualize_chunks(
+    children: list[Document],
     parent_map: dict[str, Document],
-    progress: PhaseProgress,
 ) -> list[Document]:
-    """Phase 2.5: Generate context prefixes for child chunks using their parents."""
+    """Generate context prefixes for child chunks using their parents."""
     from rpg_rules_ai.contextualize import contextualize_batch
 
-    progress.start_phase("contextualizing", len(child_chunks))
-
     items: list[tuple[Document, Document, str]] = []
-    for child in child_chunks:
+    for child in children:
         parent_id = child.metadata.get("doc_id", "")
         parent = parent_map.get(parent_id)
         if parent is None:
@@ -222,59 +195,67 @@ def _phase_contextualize(
     )
 
     enriched: list[Document] = []
-    for child, prefix in zip(child_chunks, prefixes):
+    for child, prefix in zip(children, prefixes):
         if prefix:
             new_metadata = {**child.metadata, "original_text": child.page_content, "context_prefix": prefix}
             enriched_content = prefix + "\n\n" + child.page_content
             enriched.append(Document(page_content=enriched_content, metadata=new_metadata))
         else:
             enriched.append(child)
-        progress.advance()
 
     return enriched
 
 
-def _phase_embed(
-    child_chunks: list[Document],
-    progress: PhaseProgress,
-) -> list[list[float]]:
-    """Phase 3: Generate embeddings for all child chunks in batches."""
-    embedder = OpenAIEmbeddings(model=settings.embedding_model)
-    texts = [c.page_content for c in child_chunks]
+def _extract_and_store_entities(parents: list[Document]) -> None:
+    """Extract entities from parent chunks and store immediately."""
+    from rpg_rules_ai.entity_extractor import extract_entities_batch
+    from rpg_rules_ai.entity_index import EntityIndex
 
-    progress.start_phase("embedding", len(texts))
-    all_embeddings: list[list[float]] = []
+    items: list[tuple[Document, str]] = []
+    parent_ids: list[str] = []
+    for parent in parents:
+        book = parent.metadata.get("book", "")
+        doc_id = parent.metadata.get("doc_id", "")
+        items.append((parent, book))
+        parent_ids.append(doc_id)
 
-    for i in range(0, len(texts), EMBED_BATCH_SIZE):
-        batch = texts[i : i + EMBED_BATCH_SIZE]
-        batch_embeddings = embedder.embed_documents(batch)
-        all_embeddings.extend(batch_embeddings)
-        progress.advance(len(batch))
+    batch_results = asyncio.run(
+        extract_entities_batch(items, model=settings.context_model)
+    )
 
-    return all_embeddings
+    index = EntityIndex()
+    try:
+        for i, entities in enumerate(batch_results):
+            if entities:
+                book = items[i][1]
+                index.add_entities(book, parent_ids[i], entities)
+    finally:
+        index.close()
 
 
-def _phase_store(
-    child_chunks: list[Document],
-    embeddings: list[list[float]],
+def _embed_and_store(
+    children: list[Document],
     parent_map: dict[str, Document],
-    progress: PhaseProgress,
 ) -> None:
-    """Phase 4: Store embeddings in Chroma and parents in docstore."""
+    """Embed child chunks in batches and store each batch immediately.
+
+    Never holds all embeddings in memory at once.
+    """
+    embedder = OpenAIEmbeddings(model=settings.embedding_model)
     vs = get_vectorstore()
     collection = vs._collection
-    docstore = get_docstore()
 
-    progress.start_phase("storing", len(child_chunks))
+    batch_size = min(EMBED_BATCH_SIZE, CHROMA_BATCH_LIMIT)
 
-    # Store children with pre-computed embeddings
-    for i in range(0, len(child_chunks), CHROMA_BATCH_LIMIT):
-        batch_chunks = child_chunks[i : i + CHROMA_BATCH_LIMIT]
-        batch_embeddings = embeddings[i : i + CHROMA_BATCH_LIMIT]
+    for i in range(0, len(children), batch_size):
+        batch = children[i : i + batch_size]
+        texts = [c.page_content for c in batch]
 
-        ids = [str(uuid.uuid4()) for _ in batch_chunks]
-        documents = [c.page_content for c in batch_chunks]
-        metadatas = [c.metadata for c in batch_chunks]
+        batch_embeddings = embedder.embed_documents(texts)
+
+        ids = [str(uuid.uuid4()) for _ in batch]
+        documents = [c.page_content for c in batch]
+        metadatas = [c.metadata for c in batch]
 
         collection.add(
             ids=ids,
@@ -282,64 +263,11 @@ def _phase_store(
             embeddings=batch_embeddings,
             metadatas=metadatas,
         )
-        progress.advance(len(batch_chunks))
 
-    # Store parents in docstore (serialized as Document via langchain dumps)
+    # Store parents in docstore
     from langchain_core.load import dumps
+    docstore = get_docstore()
     docstore.mset([
         (pid, dumps(parent).encode("utf-8"))
         for pid, parent in parent_map.items()
     ])
-
-
-def _phase_extract_entities(
-    parent_chunks: list[Document],
-    all_docs: list[Document],
-    progress: PhaseProgress,
-) -> list[tuple[str, str, list[dict]]]:
-    """Phase 2.6: Extract entities from parent chunks via LLM.
-
-    Returns list of (book_name, parent_doc_id, entities) tuples.
-    """
-    from rpg_rules_ai.entity_extractor import extract_entities_batch
-
-    items: list[tuple[Document, str]] = []
-    parent_ids: list[str] = []
-    for parent in parent_chunks:
-        book = parent.metadata.get("book", "")
-        doc_id = parent.metadata.get("doc_id", "")
-        items.append((parent, book))
-        parent_ids.append(doc_id)
-
-    progress.start_phase("extracting_entities", len(items))
-
-    batch_results = asyncio.run(
-        extract_entities_batch(items, model=settings.context_model)
-    )
-
-    results: list[tuple[str, str, list[dict]]] = []
-    for i, entities in enumerate(batch_results):
-        book = items[i][1]
-        pid = parent_ids[i]
-        results.append((book, pid, entities))
-        progress.advance()
-
-    return results
-
-
-def _phase_store_entities(
-    entity_results: list[tuple[str, str, list[dict]]],
-    progress: PhaseProgress,
-) -> None:
-    """Phase 4.5: Store extracted entities in the entity index."""
-    from rpg_rules_ai.entity_index import EntityIndex
-
-    progress.start_phase("storing_entities", len(entity_results))
-    index = EntityIndex()
-    try:
-        for book, chunk_id, entities in entity_results:
-            if entities:
-                index.add_entities(book, chunk_id, entities)
-            progress.advance()
-    finally:
-        index.close()

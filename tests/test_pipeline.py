@@ -89,7 +89,7 @@ class TestLayeredPipeline:
         assert statuses["Bad.md"] == "error"
         assert statuses["Good2.md"] == "success"
 
-    def test_progress_phases(self, tmp_path, mock_infra):
+    def test_progress_reports_ingesting_phase(self, tmp_path, mock_infra):
         files = [_make_md(tmp_path, "Test.md", "# Test\nSome content.")]
         phases_seen = []
 
@@ -100,10 +100,24 @@ class TestLayeredPipeline:
         from rpg_rules_ai.pipeline import run_layered_pipeline
         run_layered_pipeline(files, on_progress=on_progress)
 
-        assert "parsing" in phases_seen
-        assert "splitting" in phases_seen
-        assert "embedding" in phases_seen
-        assert "storing" in phases_seen
+        assert "ingesting" in phases_seen
+
+    def test_progress_counts_files(self, tmp_path, mock_infra):
+        files = [_make_md(tmp_path, f"Book{i}.md", f"# Book {i}\nContent.") for i in range(3)]
+        max_completed = [0]
+        total_seen = [0]
+
+        def on_progress(data):
+            if data["phase"] == "ingesting":
+                total_seen[0] = data["phase_total"]
+                if data["phase_completed"] > max_completed[0]:
+                    max_completed[0] = data["phase_completed"]
+
+        from rpg_rules_ai.pipeline import run_layered_pipeline
+        run_layered_pipeline(files, on_progress=on_progress)
+
+        assert total_seen[0] == 3
+        assert max_completed[0] == 3
 
     def test_id_consistency(self, tmp_path, mock_infra):
         files = [_make_md(tmp_path, "Book.md", "# Big Book\n" + "Content. " * 200)]
@@ -142,47 +156,85 @@ class TestLayeredPipeline:
         assert result["status"] == "done"
         assert result["file_results"][0]["status"] == "skipped"
 
-
-class TestContextualEmbeddings:
-    def test_disabled_skips_contextualize_phase(self, tmp_path, mock_infra):
-        """When ENABLE_CONTEXTUAL_EMBEDDINGS=false, no contextualize phase runs."""
-        files = [_make_md(tmp_path, "Test.md", "# Test\nSome content.")]
-        phases_seen = []
-
-        def on_progress(data):
-            if data["phase"] and data["phase"] not in phases_seen:
-                phases_seen.append(data["phase"])
+    def test_per_file_processing_stores_each_file_before_next(self, tmp_path, mock_infra):
+        """Each file is fully stored before the next one starts processing."""
+        files = [_make_md(tmp_path, f"Book{i}.md", f"# Book {i}\nContent.") for i in range(3)]
 
         from rpg_rules_ai.pipeline import run_layered_pipeline
-        result = run_layered_pipeline(files, on_progress=on_progress)
+        run_layered_pipeline(files)
+
+        # docstore.mset is called once per file (not once at the end)
+        assert mock_infra["docstore"].mset.call_count == 3
+
+    def test_embed_and_store_batching(self, tmp_path, mock_infra):
+        """Embedding and storing happen in batches, not all at once."""
+        # Create content large enough to produce multiple batches
+        big_content = "# Big Book\n" + "\n\n".join(f"## Section {i}\n" + "Word. " * 200 for i in range(20))
+        files = [_make_md(tmp_path, "Big.md", big_content)]
+
+        from rpg_rules_ai.pipeline import run_layered_pipeline
+        run_layered_pipeline(files)
+
+        # embed_documents should be called multiple times (batched)
+        embed_calls = mock_infra["embedder"].embed_documents.call_count
+        assert embed_calls >= 1
+        assert mock_infra["collection"].add.called
+
+    def test_error_in_one_file_preserves_previous(self, tmp_path, mock_infra):
+        """If file 2 fails, file 1's data is already stored."""
+        good = _make_md(tmp_path, "Good.md", "# Good\nContent.")
+        bad = _make_md(tmp_path, "Bad.md")
+
+        def mock_loader_factory(path):
+            if "Bad.md" in str(path):
+                loader = MagicMock()
+                loader.load.side_effect = RuntimeError("Corrupt file")
+                return loader
+            from langchain_community.document_loaders import UnstructuredMarkdownLoader
+            return UnstructuredMarkdownLoader(path)
+
+        with patch("rpg_rules_ai.pipeline.UnstructuredMarkdownLoader", side_effect=mock_loader_factory):
+            from rpg_rules_ai.pipeline import run_layered_pipeline
+            result = run_layered_pipeline([good, bad])
 
         assert result["status"] == "done"
-        assert "contextualizing" not in phases_seen
+        statuses = {r["filename"]: r["status"] for r in result["file_results"]}
+        assert statuses["Good.md"] == "success"
+        assert statuses["Bad.md"] == "error"
+        # Good.md was stored before Bad.md was attempted
+        assert mock_infra["docstore"].mset.call_count == 1
 
-    def test_enabled_runs_contextualize_phase(self, tmp_path, mock_infra):
-        """When ENABLE_CONTEXTUAL_EMBEDDINGS=true, contextualize phase runs and enriches chunks."""
-        # Re-patch settings to enable contextual embeddings
+
+class TestContextualEmbeddings:
+    def test_disabled_skips_contextualize(self, tmp_path, mock_infra):
+        """When ENABLE_CONTEXTUAL_EMBEDDINGS=false, no contextualize runs."""
+        files = [_make_md(tmp_path, "Test.md", "# Test\nSome content.")]
+
+        from rpg_rules_ai.pipeline import run_layered_pipeline
+        with patch("rpg_rules_ai.pipeline._contextualize_chunks") as mock_ctx:
+            result = run_layered_pipeline(files)
+
+        assert result["status"] == "done"
+        mock_ctx.assert_not_called()
+
+    def test_enabled_runs_contextualize(self, tmp_path, mock_infra):
+        """When ENABLE_CONTEXTUAL_EMBEDDINGS=true, contextualize runs and enriches chunks."""
         with patch("rpg_rules_ai.pipeline.settings") as mock_settings:
             mock_settings.embedding_model = "text-embedding-3-large"
             mock_settings.enable_contextual_embeddings = True
             mock_settings.context_model = "gpt-4o-mini"
+            mock_settings.enable_entity_extraction = False
 
             files = [_make_md(tmp_path, "Test.md", "# Test\nSome content here.")]
-            phases_seen = []
-
-            def on_progress(data):
-                if data["phase"] and data["phase"] not in phases_seen:
-                    phases_seen.append(data["phase"])
 
             async def fake_batch(items, model="gpt-4o-mini"):
                 return [f"Context for chunk {i}." for i in range(len(items))]
 
             with patch("rpg_rules_ai.contextualize.contextualize_batch", side_effect=fake_batch):
                 from rpg_rules_ai.pipeline import run_layered_pipeline
-                result = run_layered_pipeline(files, on_progress=on_progress)
+                result = run_layered_pipeline(files)
 
             assert result["status"] == "done"
-            assert "contextualizing" in phases_seen
 
             # Check that stored chunks have enriched content
             add_calls = mock_infra["collection"].add.call_args_list
@@ -200,6 +252,7 @@ class TestContextualEmbeddings:
             mock_settings.embedding_model = "text-embedding-3-large"
             mock_settings.enable_contextual_embeddings = True
             mock_settings.context_model = "gpt-4o-mini"
+            mock_settings.enable_entity_extraction = False
 
             files = [_make_md(tmp_path, "Book.md", "# Book\nOriginal rule text.")]
 
@@ -335,22 +388,17 @@ class TestPdfPipeline:
 
 
 class TestEntityExtraction:
-    def test_disabled_skips_entity_phase(self, tmp_path, mock_infra):
+    def test_disabled_skips_entity_extraction(self, tmp_path, mock_infra):
         files = [_make_md(tmp_path, "Test.md", "# Test\nSome content.")]
-        phases_seen = []
-
-        def on_progress(data):
-            if data["phase"] and data["phase"] not in phases_seen:
-                phases_seen.append(data["phase"])
 
         from rpg_rules_ai.pipeline import run_layered_pipeline
-        result = run_layered_pipeline(files, on_progress=on_progress)
+        with patch("rpg_rules_ai.pipeline._extract_and_store_entities") as mock_ext:
+            result = run_layered_pipeline(files)
 
         assert result["status"] == "done"
-        assert "extracting_entities" not in phases_seen
-        assert "storing_entities" not in phases_seen
+        mock_ext.assert_not_called()
 
-    def test_enabled_runs_entity_phases(self, tmp_path, mock_infra):
+    def test_enabled_runs_entity_extraction(self, tmp_path, mock_infra):
         with patch("rpg_rules_ai.pipeline.settings") as mock_settings:
             mock_settings.embedding_model = "text-embedding-3-large"
             mock_settings.enable_contextual_embeddings = False
@@ -358,11 +406,6 @@ class TestEntityExtraction:
             mock_settings.context_model = "gpt-4o-mini"
 
             files = [_make_md(tmp_path, "Test.md", "# Test\nRapid Strike lets you attack twice.")]
-            phases_seen = []
-
-            def on_progress(data):
-                if data["phase"] and data["phase"] not in phases_seen:
-                    phases_seen.append(data["phase"])
 
             async def fake_batch(items, model="gpt-4o-mini"):
                 return [[{"name": "Rapid Strike", "type": "maneuver", "mention_type": "defines"}] for _ in items]
@@ -375,10 +418,8 @@ class TestEntityExtraction:
                 mock_idx_cls.return_value = mock_idx
 
                 from rpg_rules_ai.pipeline import run_layered_pipeline
-                result = run_layered_pipeline(files, on_progress=on_progress)
+                result = run_layered_pipeline(files)
 
             assert result["status"] == "done"
-            assert "extracting_entities" in phases_seen
-            assert "storing_entities" in phases_seen
             mock_idx.add_entities.assert_called()
             mock_idx.close.assert_called()
