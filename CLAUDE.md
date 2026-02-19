@@ -19,12 +19,14 @@ LangGraph state machine with two nodes:
 
 The retrieval strategy is selected via `RETRIEVAL_STRATEGY` env var (default: `multi-hop`):
 
-- **MultiHopStrategy** - Iterative retrieval: expands the query, retrieves, then uses an LLM to analyze if context is sufficient or if additional searches are needed. Loops up to 3 hops. Handles cross-book rule interactions.
+- **MultiHopStrategy** - Iterative retrieval: expands the query, retrieves, then uses an LLM to analyze if context is sufficient or if additional searches are needed. Loops up to 3 hops. Between hops, runs `_entity_cross_book_queries` against the entity index to generate targeted queries for books not yet in context. Handles cross-book rule interactions.
 - **MultiQuestionStrategy** - Single-pass: expands the query into sub-questions and retrieves all in parallel. Faster but misses cross-references.
 
 Both strategies implement `RetrievalStrategy` ABC from `caprag/strategies/base.py`. New strategies can be added by subclassing and registering in the factory (`caprag/strategies/factory.py`).
 
 State flows through a `State` class extending `MessagesState` with typed fields: `main_question`, `questions` (expanded queries with context), and `answer` (structured response with citations). Defined in `caprag/schemas.py`.
+
+The `generate` node builds numbered context blocks `[1], [2]...`, calls the LLM with structured output (`AnswerWithSources`), then runs three post-processing steps in order: `_ground_citations` (fuzzy-matches LLM-generated quotes to actual source text), `_validate_citations` (strips [N] markers with no matching citation entry), `_enrich_citations_with_context` (adds `context_html` with `<mark>` highlight). If no valid citations survive, retries once with a corrective message; falls back to a no-citation response if that also fails.
 
 ### Storage Layer
 
@@ -32,7 +34,8 @@ Retrieval uses section-aware hierarchical chunking. Documents are first split by
 
 - **Vector store**: Chroma with persistent storage in `./data/chroma`. `BatchedChroma` subclass auto-splits writes into batches of 100 to avoid SQLite variable limits.
 - **Docstore**: `LocalFileStore` at `./data/docstore/` stores parent documents. Passed as `byte_store=` to `ParentDocumentRetriever` (NOT `docstore=`), which wraps it with `create_kv_docstore` for automatic `Document` serialization/deserialization via langchain `dumps`/`loads`.
-- **Sources**: uploaded markdown files saved to `./data/sources/`.
+- **Entity index**: SQLite at `./data/entity_index.db`. Maps GURPS entities (advantages, disadvantages, skills, techniques, maneuvers, spells, equipment, modifiers) to books and chunk IDs with `defines`/`references` mention types. `EntityIndex` class in `caprag/entity_index.py`. Populated during ingestion when `ENABLE_ENTITY_EXTRACTION=true`; queried at retrieval time when `ENABLE_ENTITY_RETRIEVAL=true` (default). Use `scripts/backfill_entities.py` to populate the index for already-ingested documents without re-ingesting.
+- **Sources**: uploaded files saved to `./data/sources/`.
 
 Parent documents are serialized with `langchain_core.load.dumps()` in `pipeline.py`. This preserves the full `Document` including metadata (book name, start_index). Changing the serialization format requires a full reindex.
 
@@ -68,28 +71,41 @@ OPENAI_API_KEY=test-key uv run pytest tests/ -v
 
 Single test:
 ```bash
-OPENAI_API_KEY=test-key uv run pytest tests/test_strategies.py::test_multi_hop_single_hop_sufficient -v
+OPENAI_API_KEY=test-key uv run pytest tests/test_multi_hop_entity.py::test_entity_cross_book_queries -v
 ```
 
-Tests require `OPENAI_API_KEY` env var set (any value works for unit tests since LLM calls are mocked). Tests cover strategy interface, config validation, document deduplication, and multi-hop loop behavior.
+Tests require `OPENAI_API_KEY` env var set (any value works for unit tests since LLM calls are mocked).
 
 ## Configuration
 
-All settings via `.env` file (see `.env.example`). Required: `OPENAI_API_KEY`. Optional: `LANGSMITH_API_KEY`, `CHROMA_PERSIST_DIR`, `DOCSTORE_DIR`, `SOURCES_DIR`, `LLM_MODEL`, `EMBEDDING_MODEL`, `RETRIEVAL_STRATEGY` (`multi-hop` or `multi-question`).
+All settings via `.env` file (see `.env.example`). Required: `OPENAI_API_KEY`. Key optionals:
+
+| Var | Default | Description |
+|-----|---------|-------------|
+| `RETRIEVAL_STRATEGY` | `multi-hop` | `multi-hop` or `multi-question` |
+| `LLM_MODEL` | `gpt-4o-mini` | Chat model for generation and strategy |
+| `EMBEDDING_MODEL` | `text-embedding-3-large` | Embedding model |
+| `ENABLE_CONTEXTUAL_EMBEDDINGS` | `false` | Prepend LLM-generated context to child chunks at ingest |
+| `ENABLE_ENTITY_EXTRACTION` | `false` | Extract GURPS entities into SQLite index at ingest |
+| `ENABLE_ENTITY_RETRIEVAL` | `true` | Use entity index for cross-book hop queries |
+| `CONTEXT_MODEL` | `gpt-4o-mini` | Model used by contextual embeddings phase |
+| `ENTITY_EXTRACTION_MODEL` | `gpt-4o-mini` | Model used by entity extraction phase |
+| `ENTITY_INDEX_PATH` | `./data/entity_index.db` | SQLite entity index location |
+| `LANGSMITH_API_KEY` | `` | Enables LangSmith tracing when set |
 
 The `config.py` module exports `OPENAI_API_KEY` to the environment on import so that LangChain components (which read from env, not from settings) can find it. It also auto-creates `data/` subdirectories on startup.
 
 ## Key Dependencies
 
-LangGraph (orchestration), langchain-classic (ParentDocumentRetriever, LocalFileStore), langchain-openai (LLM/embeddings with text-embedding-3-large), Chroma (vector store with persistence), Jinja2 + HTMX (frontend), pydantic-settings (configuration), unstructured[md] + nltk (markdown parsing), pymupdf4llm (PDF extraction). Managed via `uv` and `pyproject.toml`.
+LangGraph (orchestration), langchain-classic (ParentDocumentRetriever, LocalFileStore), langchain-openai (LLM/embeddings), Chroma (vector store with persistence), Jinja2 + HTMX (frontend), pydantic-settings (configuration), unstructured[md] + nltk (markdown parsing), pymupdf4llm (PDF extraction). Managed via `uv` and `pyproject.toml`.
 
 ## Document Ingestion
 
-Two upload paths: multipart upload via `POST /api/documents/upload` (20MB limit, .md only), or path-based ingest via `POST /api/documents/ingest`. Both create an `IngestionJob` that runs asynchronously and returns a `job_id` for progress polling via `GET /api/documents/jobs/{job_id}`.
+Two upload paths: multipart upload via `POST /api/documents/upload` (20MB limit, `.md` and `.pdf`), or path-based ingest via `POST /api/documents/ingest`. Both create an `IngestionJob` that runs asynchronously and returns a `job_id` for progress polling via `GET /api/documents/jobs/{job_id}`.
 
-Ingestion uses a layered pipeline (`caprag/pipeline.py`): parse → split → [contextualize] → embed → store. The parse phase detects file type: `.pdf` files go through `caprag/extraction.py` (`extract_pdf` via pymupdf4llm, then `postprocess_headers` to convert bold ALL-CAPS to `##` and bold+italic to `###`, then `clean_page_artifacts` to strip page numbers); `.md` files continue through `UnstructuredMarkdownLoader`. The split phase uses section-aware chunking from `caprag/chunking.py`: markdown headers → sections → parent chunks → child chunks with `doc_id` linkage. An optional contextualize phase (when `ENABLE_CONTEXTUAL_EMBEDDINGS=true`) prepends LLM-generated context to child chunks before embedding. Embedding runs in batches of 500. Each phase reports progress separately. The pipeline handles errors per-file (one failure doesn't block others) and supports `replace` mode to delete existing book chunks before re-ingesting.
+Ingestion uses a layered pipeline (`caprag/pipeline.py`): parse → split → [contextualize] → [entity extract] → embed → store. The parse phase detects file type: `.pdf` files go through `caprag/extraction.py` (`extract_pdf` via pymupdf4llm, then `postprocess_headers` to convert bold ALL-CAPS to `##` and bold+italic to `###`, then `clean_page_artifacts` to strip page numbers); `.md` files continue through `UnstructuredMarkdownLoader`. The split phase uses section-aware chunking from `caprag/chunking.py`: markdown headers → sections → parent chunks → child chunks with `doc_id` linkage. An optional contextualize phase (when `ENABLE_CONTEXTUAL_EMBEDDINGS=true`) prepends LLM-generated context to child chunks before embedding. An optional entity extraction phase (when `ENABLE_ENTITY_EXTRACTION=true`) calls `extract_entities_batch` on parent chunks and writes results to the SQLite entity index. Embedding runs in batches of 500. Each phase reports progress separately. The pipeline handles errors per-file (one failure doesn't block others) and supports `replace` mode to delete existing book chunks before re-ingesting.
 
-`caprag/ingest.py` provides `delete_book()` (removes from both vectorstore and docstore), `get_books_metadata()`, `get_indexed_books()`, and `reindex_directory()`. Full reindex clears the collection and re-runs the pipeline.
+`caprag/ingest.py` provides `delete_book()` (removes from vectorstore, docstore, and entity index), `get_books_metadata()`, `get_indexed_books()`, and `reindex_directory()`. Full reindex clears the collection and re-runs the pipeline.
 
 ## Prompts
 
@@ -97,7 +113,7 @@ Two editable prompts: `rag` (answer generation) and `multi_question` (query expa
 
 ## OpenSpec
 
-Project uses OpenSpec (`openspec/` directory) for artifact-driven development. Commands available via `/opsx:*` skills (new, explore, continue, apply, verify, archive, ff, sync, onboard, bulk-archive). Config at `openspec/config.yaml` uses `spec-driven` schema.
+Project uses OpenSpec (`openspec/` directory) for artifact-driven development. Commands available via `/opsx:*` skills (new, explore, continue, apply, verify, archive, ff, sync, onboard, bulk-archive). Config at `openspec/config.yaml` uses `spec-driven` schema. Completed changes are archived under `openspec/changes/archive/`. Canonical specs live in `openspec/specs/`.
 
 ## Observability
 
