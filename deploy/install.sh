@@ -1,44 +1,87 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+REPO_URL="https://github.com/caiocgomes/rpg-rules-ai.git"
 INSTALL_DIR="${INSTALL_DIR:-/opt/caprag}"
 SERVICE_USER="caprag"
 SERVICE_NAME="caprag"
+ENV_DIR="/etc/caprag"
+ENV_FILE="${ENV_DIR}/env"
 UNIT_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
-# --- Checks ---
+# --- Root check ---
 
 if [[ $EUID -ne 0 ]]; then
     echo "Error: this script must be run as root (sudo)." >&2
     exit 1
 fi
 
+# --- Install uv if missing ---
+
 if ! command -v uv &>/dev/null; then
-    echo "Error: uv is not installed or not in PATH." >&2
-    echo "Install it with: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
-    exit 1
+    echo "uv not found, installing..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
+    if ! command -v uv &>/dev/null; then
+        echo "Error: uv installation failed." >&2
+        exit 1
+    fi
 fi
 
-UV_PATH="$(command -v uv)"
+echo "Using uv at: $(command -v uv)"
 
-# --- User ---
+# --- System user ---
 
 if ! id "$SERVICE_USER" &>/dev/null; then
     echo "Creating system user '$SERVICE_USER'..."
     useradd --system --no-create-home --shell /usr/sbin/nologin "$SERVICE_USER"
 fi
 
-# --- Directories ---
+# --- Clone or pull repo ---
 
-echo "Setting up directories..."
+if [[ -d "${INSTALL_DIR}/.git" ]]; then
+    echo "Repo already exists at ${INSTALL_DIR}, pulling latest..."
+    git -C "$INSTALL_DIR" pull --ff-only
+else
+    echo "Cloning repo to ${INSTALL_DIR}..."
+    git clone "$REPO_URL" "$INSTALL_DIR"
+fi
+
+# --- Install dependencies (creates .venv) ---
+
+echo "Running uv sync..."
+cd "$INSTALL_DIR"
+uv sync --no-dev
+
+# --- Data directories ---
+
+echo "Setting up data directories..."
 mkdir -p "${INSTALL_DIR}/data/chroma"
 mkdir -p "${INSTALL_DIR}/data/docstore"
 mkdir -p "${INSTALL_DIR}/data/sources"
 mkdir -p "${INSTALL_DIR}/data/prompts"
 
-chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/data"
+# --- Env file ---
 
-# --- Unit file ---
+mkdir -p "$ENV_DIR"
+
+if [[ ! -f "$ENV_FILE" ]]; then
+    echo "Creating env file from .env.example..."
+    cp "${INSTALL_DIR}/.env.example" "$ENV_FILE"
+    echo ""
+    echo ">>> IMPORTANT: edit ${ENV_FILE} and set OPENAI_API_KEY <<<"
+    echo ""
+fi
+
+chmod 600 "$ENV_FILE"
+chown root:${SERVICE_USER} "$ENV_FILE"
+chmod 640 "$ENV_FILE"
+
+# --- Permissions ---
+
+chown -R "${SERVICE_USER}:${SERVICE_USER}" "$INSTALL_DIR"
+
+# --- Systemd unit ---
 
 echo "Installing systemd unit file..."
 cat > "$UNIT_FILE" <<EOF
@@ -51,8 +94,8 @@ Type=simple
 User=${SERVICE_USER}
 Group=${SERVICE_USER}
 WorkingDirectory=${INSTALL_DIR}
-EnvironmentFile=${INSTALL_DIR}/.env
-ExecStart=${UV_PATH} run uvicorn caprag.api:app --host 0.0.0.0 --port \${PORT:-8100} --workers \${WORKERS:-1}
+EnvironmentFile=${ENV_FILE}
+ExecStart=${INSTALL_DIR}/.venv/bin/uvicorn caprag.api:app --host 0.0.0.0 --port \${PORT:-8100} --workers \${WORKERS:-1}
 Restart=on-failure
 RestartSec=5
 StartLimitIntervalSec=30
@@ -66,22 +109,28 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
+systemctl enable "$SERVICE_NAME"
 
-# --- Done ---
+# --- Check OPENAI_API_KEY before starting ---
 
-echo ""
-echo "=== CapaRAG service installed ==="
+if grep -q '^OPENAI_API_KEY=$' "$ENV_FILE" || ! grep -q '^OPENAI_API_KEY=' "$ENV_FILE"; then
+    echo ""
+    echo "=== CapaRAG service installed but NOT started ==="
+    echo ""
+    echo "OPENAI_API_KEY is not configured in ${ENV_FILE}."
+    echo "Set it and then run: systemctl start ${SERVICE_NAME}"
+else
+    echo "Starting ${SERVICE_NAME}..."
+    systemctl start "$SERVICE_NAME"
+    echo ""
+    echo "=== CapaRAG service installed and running ==="
+fi
+
 echo ""
 echo "Install dir:  ${INSTALL_DIR}"
+echo "Env file:     ${ENV_FILE}"
 echo "Unit file:    ${UNIT_FILE}"
 echo "Service user: ${SERVICE_USER}"
-echo ""
-echo "Next steps:"
-echo "  1. Copy project files to ${INSTALL_DIR}"
-echo "  2. Copy .env to ${INSTALL_DIR}/.env (chmod 600)"
-echo "  3. Run: cd ${INSTALL_DIR} && uv sync --no-dev"
-echo "  4. systemctl enable ${SERVICE_NAME}   # start on boot"
-echo "  5. systemctl start ${SERVICE_NAME}    # start now"
 echo ""
 echo "Useful commands:"
 echo "  systemctl status ${SERVICE_NAME}"
