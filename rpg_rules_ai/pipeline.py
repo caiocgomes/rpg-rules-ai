@@ -13,9 +13,9 @@ from langchain_community.document_loaders import UnstructuredMarkdownLoader
 from langchain_core.documents import Document
 from langchain_openai import OpenAIEmbeddings
 
-from caprag.chunking import split_into_sections, split_parents_into_children, split_sections_into_parents
-from caprag.config import settings
-from caprag.retriever import CHROMA_BATCH_LIMIT, get_docstore, get_vectorstore
+from rpg_rules_ai.chunking import split_into_sections, split_parents_into_children, split_sections_into_parents
+from rpg_rules_ai.config import settings
+from rpg_rules_ai.retriever import CHROMA_BATCH_LIMIT, get_docstore, get_vectorstore
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ def _phase_parse(
     PDF files are extracted via pymupdf4llm and post-processed to detect headers.
     Markdown files continue through UnstructuredMarkdownLoader.
     """
-    from caprag.ingest import delete_book, get_indexed_books
+    from rpg_rules_ai.ingest import delete_book, get_indexed_books
 
     progress.start_phase("parsing", len(paths))
     indexed = get_indexed_books()
@@ -147,7 +147,7 @@ def _phase_parse(
                     continue
 
             if path.suffix.lower() == ".pdf":
-                from caprag.extraction import clean_page_artifacts, extract_pdf, postprocess_headers
+                from rpg_rules_ai.extraction import clean_page_artifacts, extract_pdf, postprocess_headers
 
                 raw_md = extract_pdf(path)
                 md = postprocess_headers(clean_page_artifacts(raw_md))
@@ -204,7 +204,7 @@ def _phase_contextualize(
     progress: PhaseProgress,
 ) -> list[Document]:
     """Phase 2.5: Generate context prefixes for child chunks using their parents."""
-    from caprag.contextualize import contextualize_batch
+    from rpg_rules_ai.contextualize import contextualize_batch
 
     progress.start_phase("contextualizing", len(child_chunks))
 
@@ -301,7 +301,7 @@ def _phase_extract_entities(
 
     Returns list of (book_name, parent_doc_id, entities) tuples.
     """
-    from caprag.entity_extractor import extract_entities_batch
+    from rpg_rules_ai.entity_extractor import extract_entities_batch
 
     items: list[tuple[Document, str]] = []
     parent_ids: list[str] = []
@@ -332,7 +332,7 @@ def _phase_store_entities(
     progress: PhaseProgress,
 ) -> None:
     """Phase 4.5: Store extracted entities in the entity index."""
-    from caprag.entity_index import EntityIndex
+    from rpg_rules_ai.entity_index import EntityIndex
 
     progress.start_phase("storing_entities", len(entity_results))
     index = EntityIndex()

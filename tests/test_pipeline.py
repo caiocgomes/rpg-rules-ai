@@ -27,13 +27,13 @@ def mock_infra():
     mock_embedder.embed_documents.side_effect = lambda texts: [[0.1] * 10 for _ in texts]
 
     with (
-        patch("caprag.pipeline.get_vectorstore", return_value=mock_vs),
-        patch("caprag.pipeline.get_docstore", return_value=mock_docstore),
-        patch("caprag.pipeline.OpenAIEmbeddings", return_value=mock_embedder),
-        patch("caprag.ingest.get_vectorstore", return_value=mock_vs),
-        patch("caprag.ingest.get_docstore", return_value=mock_docstore),
-        patch("caprag.ingest.settings") as mock_ingest_settings,
-        patch("caprag.pipeline.settings") as mock_pipeline_settings,
+        patch("rpg_rules_ai.pipeline.get_vectorstore", return_value=mock_vs),
+        patch("rpg_rules_ai.pipeline.get_docstore", return_value=mock_docstore),
+        patch("rpg_rules_ai.pipeline.OpenAIEmbeddings", return_value=mock_embedder),
+        patch("rpg_rules_ai.ingest.get_vectorstore", return_value=mock_vs),
+        patch("rpg_rules_ai.ingest.get_docstore", return_value=mock_docstore),
+        patch("rpg_rules_ai.ingest.settings") as mock_ingest_settings,
+        patch("rpg_rules_ai.pipeline.settings") as mock_pipeline_settings,
     ):
         mock_ingest_settings.sources_dir = "/tmp/fake_sources"
         mock_pipeline_settings.embedding_model = "text-embedding-3-large"
@@ -52,7 +52,7 @@ class TestLayeredPipeline:
     def test_full_pipeline(self, tmp_path, mock_infra):
         files = [_make_md(tmp_path, f"Book{i}.md", f"# Book {i}\nContent for book {i}.") for i in range(3)]
 
-        from caprag.pipeline import run_layered_pipeline
+        from rpg_rules_ai.pipeline import run_layered_pipeline
         result = run_layered_pipeline(files)
 
         assert result["status"] == "done"
@@ -79,8 +79,8 @@ class TestLayeredPipeline:
             from langchain_community.document_loaders import UnstructuredMarkdownLoader
             return UnstructuredMarkdownLoader(path)
 
-        with patch("caprag.pipeline.UnstructuredMarkdownLoader", side_effect=mock_loader_factory):
-            from caprag.pipeline import run_layered_pipeline
+        with patch("rpg_rules_ai.pipeline.UnstructuredMarkdownLoader", side_effect=mock_loader_factory):
+            from rpg_rules_ai.pipeline import run_layered_pipeline
             result = run_layered_pipeline([good1, bad, good2])
 
         assert result["status"] == "done"
@@ -97,7 +97,7 @@ class TestLayeredPipeline:
             if data["phase"] and data["phase"] not in phases_seen:
                 phases_seen.append(data["phase"])
 
-        from caprag.pipeline import run_layered_pipeline
+        from rpg_rules_ai.pipeline import run_layered_pipeline
         run_layered_pipeline(files, on_progress=on_progress)
 
         assert "parsing" in phases_seen
@@ -108,7 +108,7 @@ class TestLayeredPipeline:
     def test_id_consistency(self, tmp_path, mock_infra):
         files = [_make_md(tmp_path, "Book.md", "# Big Book\n" + "Content. " * 200)]
 
-        from caprag.pipeline import run_layered_pipeline
+        from rpg_rules_ai.pipeline import run_layered_pipeline
         run_layered_pipeline(files)
 
         # Check that collection.add was called with metadatas containing doc_id
@@ -136,7 +136,7 @@ class TestLayeredPipeline:
 
         files = [_make_md(tmp_path, "Dup.md")]
 
-        from caprag.pipeline import run_layered_pipeline
+        from rpg_rules_ai.pipeline import run_layered_pipeline
         result = run_layered_pipeline(files)
 
         assert result["status"] == "done"
@@ -153,7 +153,7 @@ class TestContextualEmbeddings:
             if data["phase"] and data["phase"] not in phases_seen:
                 phases_seen.append(data["phase"])
 
-        from caprag.pipeline import run_layered_pipeline
+        from rpg_rules_ai.pipeline import run_layered_pipeline
         result = run_layered_pipeline(files, on_progress=on_progress)
 
         assert result["status"] == "done"
@@ -162,7 +162,7 @@ class TestContextualEmbeddings:
     def test_enabled_runs_contextualize_phase(self, tmp_path, mock_infra):
         """When ENABLE_CONTEXTUAL_EMBEDDINGS=true, contextualize phase runs and enriches chunks."""
         # Re-patch settings to enable contextual embeddings
-        with patch("caprag.pipeline.settings") as mock_settings:
+        with patch("rpg_rules_ai.pipeline.settings") as mock_settings:
             mock_settings.embedding_model = "text-embedding-3-large"
             mock_settings.enable_contextual_embeddings = True
             mock_settings.context_model = "gpt-4o-mini"
@@ -177,8 +177,8 @@ class TestContextualEmbeddings:
             async def fake_batch(items, model="gpt-4o-mini"):
                 return [f"Context for chunk {i}." for i in range(len(items))]
 
-            with patch("caprag.contextualize.contextualize_batch", side_effect=fake_batch):
-                from caprag.pipeline import run_layered_pipeline
+            with patch("rpg_rules_ai.contextualize.contextualize_batch", side_effect=fake_batch):
+                from rpg_rules_ai.pipeline import run_layered_pipeline
                 result = run_layered_pipeline(files, on_progress=on_progress)
 
             assert result["status"] == "done"
@@ -196,7 +196,7 @@ class TestContextualEmbeddings:
 
     def test_enabled_preserves_original_text_in_metadata(self, tmp_path, mock_infra):
         """Enriched chunks keep original text accessible via metadata."""
-        with patch("caprag.pipeline.settings") as mock_settings:
+        with patch("rpg_rules_ai.pipeline.settings") as mock_settings:
             mock_settings.embedding_model = "text-embedding-3-large"
             mock_settings.enable_contextual_embeddings = True
             mock_settings.context_model = "gpt-4o-mini"
@@ -206,8 +206,8 @@ class TestContextualEmbeddings:
             async def fake_batch(items, model="gpt-4o-mini"):
                 return ["Prefix." for _ in items]
 
-            with patch("caprag.contextualize.contextualize_batch", side_effect=fake_batch):
-                from caprag.pipeline import run_layered_pipeline
+            with patch("rpg_rules_ai.contextualize.contextualize_batch", side_effect=fake_batch):
+                from rpg_rules_ai.pipeline import run_layered_pipeline
                 result = run_layered_pipeline(files)
 
             assert result["status"] == "done"
@@ -258,7 +258,7 @@ class TestPdfPipeline:
         mock_pymupdf.to_markdown.return_value = SAMPLE_PDF_MARKDOWN
 
         with patch.dict(sys.modules, {"pymupdf4llm": mock_pymupdf}):
-            from caprag.pipeline import run_layered_pipeline
+            from rpg_rules_ai.pipeline import run_layered_pipeline
             result = run_layered_pipeline([pdf_file])
 
         assert result["status"] == "done"
@@ -275,7 +275,7 @@ class TestPdfPipeline:
         mock_pymupdf.to_markdown.return_value = SAMPLE_PDF_MARKDOWN
 
         with patch.dict(sys.modules, {"pymupdf4llm": mock_pymupdf}):
-            from caprag.pipeline import run_layered_pipeline
+            from rpg_rules_ai.pipeline import run_layered_pipeline
             run_layered_pipeline([pdf_file])
 
         # Check that stored parents in docstore have section header metadata
@@ -308,7 +308,7 @@ class TestPdfPipeline:
         mock_pymupdf.to_markdown.return_value = "## COMBAT\nFight rules here."
 
         with patch.dict(sys.modules, {"pymupdf4llm": mock_pymupdf}):
-            from caprag.pipeline import run_layered_pipeline
+            from rpg_rules_ai.pipeline import run_layered_pipeline
             result = run_layered_pipeline([md_file, pdf_file])
 
         assert result["status"] == "done"
@@ -325,7 +325,7 @@ class TestPdfPipeline:
         mock_pymupdf.to_markdown.side_effect = RuntimeError("Corrupt PDF")
 
         with patch.dict(sys.modules, {"pymupdf4llm": mock_pymupdf}):
-            from caprag.pipeline import run_layered_pipeline
+            from rpg_rules_ai.pipeline import run_layered_pipeline
             result = run_layered_pipeline([good_md, bad_pdf])
 
         assert result["status"] == "done"
@@ -343,7 +343,7 @@ class TestEntityExtraction:
             if data["phase"] and data["phase"] not in phases_seen:
                 phases_seen.append(data["phase"])
 
-        from caprag.pipeline import run_layered_pipeline
+        from rpg_rules_ai.pipeline import run_layered_pipeline
         result = run_layered_pipeline(files, on_progress=on_progress)
 
         assert result["status"] == "done"
@@ -351,7 +351,7 @@ class TestEntityExtraction:
         assert "storing_entities" not in phases_seen
 
     def test_enabled_runs_entity_phases(self, tmp_path, mock_infra):
-        with patch("caprag.pipeline.settings") as mock_settings:
+        with patch("rpg_rules_ai.pipeline.settings") as mock_settings:
             mock_settings.embedding_model = "text-embedding-3-large"
             mock_settings.enable_contextual_embeddings = False
             mock_settings.enable_entity_extraction = True
@@ -368,13 +368,13 @@ class TestEntityExtraction:
                 return [[{"name": "Rapid Strike", "type": "maneuver", "mention_type": "defines"}] for _ in items]
 
             with (
-                patch("caprag.entity_extractor.extract_entities_batch", side_effect=fake_batch),
-                patch("caprag.entity_index.EntityIndex") as mock_idx_cls,
+                patch("rpg_rules_ai.entity_extractor.extract_entities_batch", side_effect=fake_batch),
+                patch("rpg_rules_ai.entity_index.EntityIndex") as mock_idx_cls,
             ):
                 mock_idx = MagicMock()
                 mock_idx_cls.return_value = mock_idx
 
-                from caprag.pipeline import run_layered_pipeline
+                from rpg_rules_ai.pipeline import run_layered_pipeline
                 result = run_layered_pipeline(files, on_progress=on_progress)
 
             assert result["status"] == "done"

@@ -1,0 +1,21 @@
+[Unit]
+Description=RPG Rules AI - Agentic RAG for RPG rulebooks
+After=network.target
+
+[Service]
+Type=simple
+User=rpg-rules-ai
+Group=rpg-rules-ai
+WorkingDirectory=/opt/rpg-rules-ai
+EnvironmentFile=/etc/rpg-rules-ai/env
+ExecStart=/opt/rpg-rules-ai/.venv/bin/uvicorn rpg_rules_ai.api:app --host 0.0.0.0 --port ${PORT:-8100} --workers ${WORKERS:-1}
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=30
+StartLimitBurst=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rpg-rules-ai
+
+[Install]
+WantedBy=multi-user.target

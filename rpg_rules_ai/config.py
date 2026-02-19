@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     openai_api_key: str
     langsmith_api_key: str = ""
-    langchain_project: str = "capa-rag"
+    langchain_project: str = "rpg-rules-ai"
     chroma_persist_dir: str = "./data/chroma"
     sources_dir: str = "./data/sources"
     docstore_dir: str = "./data/docstore"

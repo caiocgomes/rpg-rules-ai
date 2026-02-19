@@ -11,7 +11,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
-from caprag.prompts import DEFAULT_ENTITY_EXTRACTION_TEMPLATE
+from rpg_rules_ai.prompts import DEFAULT_ENTITY_EXTRACTION_TEMPLATE
 
 logger = logging.getLogger(__name__)
 

@@ -7,7 +7,7 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
-from caprag.config import settings
+from rpg_rules_ai.config import settings
 
 ENTITY_TYPES = frozenset({
     "advantage", "disadvantage", "skill", "technique",

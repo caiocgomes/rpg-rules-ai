@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import caprag.retriever as retriever_module
+import rpg_rules_ai.retriever as retriever_module
 
 
 @pytest.fixture(autouse=True)
@@ -15,8 +15,8 @@ def reset_singletons():
     retriever_module._vectorstore = None
 
 
-@patch("caprag.retriever.OpenAIEmbeddings")
-@patch("caprag.retriever.BatchedChroma")
+@patch("rpg_rules_ai.retriever.OpenAIEmbeddings")
+@patch("rpg_rules_ai.retriever.BatchedChroma")
 def test_get_vectorstore_creates_instance(mock_chroma_cls, mock_embeddings_cls):
     mock_embeddings = MagicMock()
     mock_embeddings_cls.return_value = mock_embeddings
@@ -28,14 +28,14 @@ def test_get_vectorstore_creates_instance(mock_chroma_cls, mock_embeddings_cls):
     assert result is mock_vs
     mock_embeddings_cls.assert_called_once()
     mock_chroma_cls.assert_called_once_with(
-        collection_name="caprag",
+        collection_name="rpg_rules_ai",
         embedding_function=mock_embeddings,
         persist_directory=retriever_module.settings.chroma_persist_dir,
     )
 
 
-@patch("caprag.retriever.OpenAIEmbeddings")
-@patch("caprag.retriever.BatchedChroma")
+@patch("rpg_rules_ai.retriever.OpenAIEmbeddings")
+@patch("rpg_rules_ai.retriever.BatchedChroma")
 def test_get_vectorstore_returns_cached(mock_chroma_cls, mock_embeddings_cls):
     mock_chroma_cls.return_value = MagicMock()
     retriever_module.get_vectorstore()
@@ -43,11 +43,11 @@ def test_get_vectorstore_returns_cached(mock_chroma_cls, mock_embeddings_cls):
     mock_chroma_cls.assert_called_once()
 
 
-@patch("caprag.retriever.get_child_splitter")
-@patch("caprag.retriever.get_parent_splitter")
-@patch("caprag.retriever.ParentDocumentRetriever")
-@patch("caprag.retriever.get_vectorstore")
-@patch("caprag.retriever.get_docstore")
+@patch("rpg_rules_ai.retriever.get_child_splitter")
+@patch("rpg_rules_ai.retriever.get_parent_splitter")
+@patch("rpg_rules_ai.retriever.ParentDocumentRetriever")
+@patch("rpg_rules_ai.retriever.get_vectorstore")
+@patch("rpg_rules_ai.retriever.get_docstore")
 def test_get_retriever_creates_instance(mock_get_ds, mock_get_vs, mock_pdr_cls, mock_parent_sp, mock_child_sp):
     mock_vs = MagicMock()
     mock_get_vs.return_value = mock_vs
@@ -64,7 +64,7 @@ def test_get_retriever_creates_instance(mock_get_ds, mock_get_vs, mock_pdr_cls, 
     mock_pdr_cls.assert_called_once()
 
 
-@patch("caprag.retriever.get_vectorstore")
+@patch("rpg_rules_ai.retriever.get_vectorstore")
 def test_get_retriever_returns_cached(mock_get_vs):
     sentinel = MagicMock()
     retriever_module._retriever = sentinel
@@ -75,11 +75,11 @@ def test_get_retriever_returns_cached(mock_get_vs):
     mock_get_vs.assert_not_called()
 
 
-@patch("caprag.retriever.get_child_splitter")
-@patch("caprag.retriever.get_parent_splitter")
-@patch("caprag.retriever.ParentDocumentRetriever")
-@patch("caprag.retriever.get_vectorstore")
-@patch("caprag.retriever.get_docstore")
+@patch("rpg_rules_ai.retriever.get_child_splitter")
+@patch("rpg_rules_ai.retriever.get_parent_splitter")
+@patch("rpg_rules_ai.retriever.ParentDocumentRetriever")
+@patch("rpg_rules_ai.retriever.get_vectorstore")
+@patch("rpg_rules_ai.retriever.get_docstore")
 def test_get_retriever_uses_mmr_search_type(mock_get_ds, mock_get_vs, mock_pdr_cls, mock_parent_sp, mock_child_sp):
     mock_get_vs.return_value = MagicMock()
     mock_get_ds.return_value = MagicMock()
@@ -91,11 +91,11 @@ def test_get_retriever_uses_mmr_search_type(mock_get_ds, mock_get_vs, mock_pdr_c
     assert call_kwargs["search_type"] == "mmr"
 
 
-@patch("caprag.retriever.get_child_splitter")
-@patch("caprag.retriever.get_parent_splitter")
-@patch("caprag.retriever.ParentDocumentRetriever")
-@patch("caprag.retriever.get_vectorstore")
-@patch("caprag.retriever.get_docstore")
+@patch("rpg_rules_ai.retriever.get_child_splitter")
+@patch("rpg_rules_ai.retriever.get_parent_splitter")
+@patch("rpg_rules_ai.retriever.ParentDocumentRetriever")
+@patch("rpg_rules_ai.retriever.get_vectorstore")
+@patch("rpg_rules_ai.retriever.get_docstore")
 def test_get_retriever_passes_search_kwargs_from_config(mock_get_ds, mock_get_vs, mock_pdr_cls, mock_parent_sp, mock_child_sp):
     mock_get_vs.return_value = MagicMock()
     mock_get_ds.return_value = MagicMock()

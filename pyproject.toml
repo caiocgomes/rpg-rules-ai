@@ -1,5 +1,5 @@
 [project]
-name = "caprag"
+name = "rpg-rules-ai"
 version = "0.1.0"
 description = "Agentic RAG system for RPG rulebooks"
 requires-python = ">=3.11,<3.14"

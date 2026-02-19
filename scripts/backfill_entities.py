@@ -21,10 +21,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from langchain_core.load import loads
 
-from caprag.config import settings
-from caprag.entity_extractor import extract_entities_batch
-from caprag.entity_index import EntityIndex
-from caprag.retriever import get_docstore, get_vectorstore
+from rpg_rules_ai.config import settings
+from rpg_rules_ai.entity_extractor import extract_entities_batch
+from rpg_rules_ai.entity_index import EntityIndex
+from rpg_rules_ai.retriever import get_docstore, get_vectorstore
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -113,7 +113,7 @@ async def main():
     parser.add_argument("--limit", type=int, help="Limit parents per book")
     args = parser.parse_args()
 
-    from caprag.ingest import get_indexed_books
+    from rpg_rules_ai.ingest import get_indexed_books
 
     if args.books:
         books = args.books

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from langchain_core.documents import Document
 
-from caprag.entity_extractor import ExtractedEntities, ExtractedEntity
+from rpg_rules_ai.entity_extractor import ExtractedEntities, ExtractedEntity
 
 
 @pytest.fixture
@@ -17,8 +17,8 @@ def parent_doc():
 
 
 @pytest.mark.asyncio
-@patch("caprag.entity_extractor.ChatOpenAI")
-@patch("caprag.entity_extractor.ChatPromptTemplate")
+@patch("rpg_rules_ai.entity_extractor.ChatOpenAI")
+@patch("rpg_rules_ai.entity_extractor.ChatPromptTemplate")
 async def test_extract_entities_returns_list(mock_prompt_cls, mock_chat_cls, parent_doc):
     mock_result = ExtractedEntities(entities=[
         ExtractedEntity(name="Rapid Strike", type="maneuver", mention_type="defines"),
@@ -35,7 +35,7 @@ async def test_extract_entities_returns_list(mock_prompt_cls, mock_chat_cls, par
     mock_llm.with_structured_output = MagicMock(return_value=MagicMock())
     mock_chat_cls.return_value = mock_llm
 
-    from caprag.entity_extractor import extract_entities
+    from rpg_rules_ai.entity_extractor import extract_entities
 
     result = await extract_entities(parent_doc, "Martial Arts")
 
@@ -46,7 +46,7 @@ async def test_extract_entities_returns_list(mock_prompt_cls, mock_chat_cls, par
 
 
 @pytest.mark.asyncio
-@patch("caprag.entity_extractor.extract_entities")
+@patch("rpg_rules_ai.entity_extractor.extract_entities")
 async def test_batch_processes_all(mock_extract):
     mock_extract.side_effect = [
         [{"name": "Magery", "type": "advantage", "mention_type": "defines"}],
@@ -58,7 +58,7 @@ async def test_batch_processes_all(mock_extract):
         for i in range(2)
     ]
 
-    from caprag.entity_extractor import extract_entities_batch
+    from rpg_rules_ai.entity_extractor import extract_entities_batch
 
     results = await extract_entities_batch(items, batch_size=10)
 
@@ -68,7 +68,7 @@ async def test_batch_processes_all(mock_extract):
 
 
 @pytest.mark.asyncio
-@patch("caprag.entity_extractor.extract_entities")
+@patch("rpg_rules_ai.entity_extractor.extract_entities")
 async def test_batch_handles_errors(mock_extract):
     mock_extract.side_effect = [
         [{"name": "Magery", "type": "advantage", "mention_type": "defines"}],
@@ -81,7 +81,7 @@ async def test_batch_handles_errors(mock_extract):
         for i in range(3)
     ]
 
-    from caprag.entity_extractor import extract_entities_batch
+    from rpg_rules_ai.entity_extractor import extract_entities_batch
 
     results = await extract_entities_batch(items, batch_size=10)
 
@@ -92,9 +92,9 @@ async def test_batch_handles_errors(mock_extract):
 
 
 @pytest.mark.asyncio
-@patch("caprag.entity_extractor.extract_entities")
+@patch("rpg_rules_ai.entity_extractor.extract_entities")
 async def test_batch_empty_input(mock_extract):
-    from caprag.entity_extractor import extract_entities_batch
+    from rpg_rules_ai.entity_extractor import extract_entities_batch
 
     results = await extract_entities_batch([], batch_size=10)
     assert results == []

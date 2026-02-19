@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from langchain_core.documents import Document
 
-from caprag.chunking import (
+from rpg_rules_ai.chunking import (
     split_into_sections,
     split_parents_into_children,
     split_sections_into_parents,
@@ -37,7 +37,7 @@ class TestSplitIntoSections:
 
 
 class TestSplitSectionsIntoParents:
-    @patch("caprag.chunking.settings")
+    @patch("rpg_rules_ai.chunking.settings")
     def test_small_sections_stay_whole(self, mock_settings):
         mock_settings.parent_chunk_max = 4000
         mock_settings.parent_chunk_overlap = 500
@@ -49,7 +49,7 @@ class TestSplitSectionsIntoParents:
         assert len(parents) == 1
         assert parents[0].page_content == sections[0].page_content
 
-    @patch("caprag.chunking.settings")
+    @patch("rpg_rules_ai.chunking.settings")
     def test_large_sections_get_split(self, mock_settings):
         mock_settings.parent_chunk_max = 100
         mock_settings.parent_chunk_overlap = 20
@@ -61,7 +61,7 @@ class TestSplitSectionsIntoParents:
         for p in parents:
             assert "h2" in p.metadata
 
-    @patch("caprag.chunking.settings")
+    @patch("rpg_rules_ai.chunking.settings")
     def test_mixed_sizes(self, mock_settings):
         mock_settings.parent_chunk_max = 500
         mock_settings.parent_chunk_overlap = 50
@@ -73,7 +73,7 @@ class TestSplitSectionsIntoParents:
 
 
 class TestSplitParentsIntoChildren:
-    @patch("caprag.chunking.settings")
+    @patch("rpg_rules_ai.chunking.settings")
     def test_children_have_doc_id(self, mock_settings):
         mock_settings.child_chunk_size = 50
         mock_settings.child_chunk_overlap = 10
@@ -91,7 +91,7 @@ class TestSplitParentsIntoChildren:
             assert child.metadata["doc_id"] == parent_id
             assert child.metadata["book"] == "Test.md"
 
-    @patch("caprag.chunking.settings")
+    @patch("rpg_rules_ai.chunking.settings")
     def test_id_consistency(self, mock_settings):
         mock_settings.child_chunk_size = 50
         mock_settings.child_chunk_overlap = 10
@@ -105,7 +105,7 @@ class TestSplitParentsIntoChildren:
         child_parent_ids = {c.metadata["doc_id"] for c in children}
         assert child_parent_ids.issubset(set(parent_map.keys()))
 
-    @patch("caprag.chunking.settings")
+    @patch("rpg_rules_ai.chunking.settings")
     def test_multiple_parents(self, mock_settings):
         mock_settings.child_chunk_size = 50
         mock_settings.child_chunk_overlap = 10

@@ -33,7 +33,7 @@ class IngestionJob:
             self._progress.update(update)
 
     def _run(self) -> None:
-        from caprag.pipeline import run_layered_pipeline
+        from rpg_rules_ai.pipeline import run_layered_pipeline
 
         try:
             result = run_layered_pipeline(

@@ -2,13 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## What is CapaRAG
+## What is RPG Rules AI
 
 Agentic RAG system for answering questions about RPG in general (rules, mechanics, lore, systems). Supports English and Portuguese queries. Currently indexed against GURPS 4e rulebooks, but the architecture is system-agnostic.
 
 ## Architecture Principle
 
-Backend and frontend MUST be decoupled. The JSON API (`/api/` prefix in `caprag/api.py`) is the contract between them. The current Jinja2+HTMX frontend is one consumer of that API, but the backend should never assume a specific frontend. Any new feature must expose a JSON API endpoint first; frontend routes in `caprag/frontend.py` consume those endpoints or replicate the logic via shared modules.
+Backend and frontend MUST be decoupled. The JSON API (`/api/` prefix in `rpg_rules_ai/api.py`) is the contract between them. The current Jinja2+HTMX frontend is one consumer of that API, but the backend should never assume a specific frontend. Any new feature must expose a JSON API endpoint first; frontend routes in `rpg_rules_ai/frontend.py` consume those endpoints or replicate the logic via shared modules.
 
 ## Backend Architecture
 
@@ -22,28 +22,28 @@ The retrieval strategy is selected via `RETRIEVAL_STRATEGY` env var (default: `m
 - **MultiHopStrategy** - Iterative retrieval: expands the query, retrieves, then uses an LLM to analyze if context is sufficient or if additional searches are needed. Loops up to 3 hops. Between hops, runs `_entity_cross_book_queries` against the entity index to generate targeted queries for books not yet in context. Handles cross-book rule interactions.
 - **MultiQuestionStrategy** - Single-pass: expands the query into sub-questions and retrieves all in parallel. Faster but misses cross-references.
 
-Both strategies implement `RetrievalStrategy` ABC from `caprag/strategies/base.py`. New strategies can be added by subclassing and registering in the factory (`caprag/strategies/factory.py`).
+Both strategies implement `RetrievalStrategy` ABC from `rpg_rules_ai/strategies/base.py`. New strategies can be added by subclassing and registering in the factory (`rpg_rules_ai/strategies/factory.py`).
 
-State flows through a `State` class extending `MessagesState` with typed fields: `main_question`, `questions` (expanded queries with context), and `answer` (structured response with citations). Defined in `caprag/schemas.py`.
+State flows through a `State` class extending `MessagesState` with typed fields: `main_question`, `questions` (expanded queries with context), and `answer` (structured response with citations). Defined in `rpg_rules_ai/schemas.py`.
 
 The `generate` node builds numbered context blocks `[1], [2]...`, calls the LLM with structured output (`AnswerWithSources`), then runs three post-processing steps in order: `_ground_citations` (fuzzy-matches LLM-generated quotes to actual source text), `_validate_citations` (strips [N] markers with no matching citation entry), `_enrich_citations_with_context` (adds `context_html` with `<mark>` highlight). If no valid citations survive, retries once with a corrective message; falls back to a no-citation response if that also fails.
 
 ### Storage Layer
 
-Retrieval uses section-aware hierarchical chunking. Documents are first split by markdown headers (`##`, `###`) into semantic sections, then sections that exceed `PARENT_CHUNK_MAX` (default 4000 chars) are character-split into parent chunks, and finally parents are split into child chunks (`CHILD_CHUNK_SIZE` default 512, overlap 100) for retrieval precision. Parent chunks provide context completeness when retrieved via `doc_id` linkage. The retriever uses MMR (Maximal Marginal Relevance) with `k=12`, `fetch_k=30`, `lambda_mult=0.7` to balance relevance and diversity across source books. All chunk sizes and retriever params are configurable via env vars (`CHILD_CHUNK_SIZE`, `CHILD_CHUNK_OVERLAP`, `PARENT_CHUNK_MAX`, `PARENT_CHUNK_OVERLAP`, `RETRIEVER_K`, `RETRIEVER_FETCH_K`, `RETRIEVER_LAMBDA_MULT`). Splitter definitions are centralized in `caprag/chunking.py` and shared between the ingestion pipeline and the retriever.
+Retrieval uses section-aware hierarchical chunking. Documents are first split by markdown headers (`##`, `###`) into semantic sections, then sections that exceed `PARENT_CHUNK_MAX` (default 4000 chars) are character-split into parent chunks, and finally parents are split into child chunks (`CHILD_CHUNK_SIZE` default 512, overlap 100) for retrieval precision. Parent chunks provide context completeness when retrieved via `doc_id` linkage. The retriever uses MMR (Maximal Marginal Relevance) with `k=12`, `fetch_k=30`, `lambda_mult=0.7` to balance relevance and diversity across source books. All chunk sizes and retriever params are configurable via env vars (`CHILD_CHUNK_SIZE`, `CHILD_CHUNK_OVERLAP`, `PARENT_CHUNK_MAX`, `PARENT_CHUNK_OVERLAP`, `RETRIEVER_K`, `RETRIEVER_FETCH_K`, `RETRIEVER_LAMBDA_MULT`). Splitter definitions are centralized in `rpg_rules_ai/chunking.py` and shared between the ingestion pipeline and the retriever.
 
 - **Vector store**: Chroma with persistent storage in `./data/chroma`. `BatchedChroma` subclass auto-splits writes into batches of 100 to avoid SQLite variable limits.
 - **Docstore**: `LocalFileStore` at `./data/docstore/` stores parent documents. Passed as `byte_store=` to `ParentDocumentRetriever` (NOT `docstore=`), which wraps it with `create_kv_docstore` for automatic `Document` serialization/deserialization via langchain `dumps`/`loads`.
-- **Entity index**: SQLite at `./data/entity_index.db`. Maps GURPS entities (advantages, disadvantages, skills, techniques, maneuvers, spells, equipment, modifiers) to books and chunk IDs with `defines`/`references` mention types. `EntityIndex` class in `caprag/entity_index.py`. Populated during ingestion when `ENABLE_ENTITY_EXTRACTION=true`; queried at retrieval time when `ENABLE_ENTITY_RETRIEVAL=true` (default). Use `scripts/backfill_entities.py` to populate the index for already-ingested documents without re-ingesting.
+- **Entity index**: SQLite at `./data/entity_index.db`. Maps GURPS entities (advantages, disadvantages, skills, techniques, maneuvers, spells, equipment, modifiers) to books and chunk IDs with `defines`/`references` mention types. `EntityIndex` class in `rpg_rules_ai/entity_index.py`. Populated during ingestion when `ENABLE_ENTITY_EXTRACTION=true`; queried at retrieval time when `ENABLE_ENTITY_RETRIEVAL=true` (default). Use `scripts/backfill_entities.py` to populate the index for already-ingested documents without re-ingesting.
 - **Sources**: uploaded files saved to `./data/sources/`.
 
 Parent documents are serialized with `langchain_core.load.dumps()` in `pipeline.py`. This preserves the full `Document` including metadata (book name, start_index). Changing the serialization format requires a full reindex.
 
 ## Frontend
 
-Jinja2 templates + HTMX served directly by FastAPI. No separate frontend process. Templates live in `caprag/templates/` (with fragments in `caprag/templates/fragments/`), static assets in `caprag/static/`. CSS is Pico CSS (CDN) with minimal overrides in `style.css`. HTMX loaded locally from `caprag/static/htmx.min.js`.
+Jinja2 templates + HTMX served directly by FastAPI. No separate frontend process. Templates live in `rpg_rules_ai/templates/` (with fragments in `rpg_rules_ai/templates/fragments/`), static assets in `rpg_rules_ai/static/`. CSS is Pico CSS (CDN) with minimal overrides in `style.css`. HTMX loaded locally from `rpg_rules_ai/static/htmx.min.js`.
 
-Frontend routes are in `caprag/frontend.py` (APIRouter mounted at root). JSON API routes live under `/api/` prefix in `caprag/api.py`. Three pages: Chat (`/`), Documents (`/documents`), Prompts (`/prompts/page`). HTMX handles all async interactions (chat submission, upload progress polling, document delete, prompt save/reset).
+Frontend routes are in `rpg_rules_ai/frontend.py` (APIRouter mounted at root). JSON API routes live under `/api/` prefix in `rpg_rules_ai/api.py`. Three pages: Chat (`/`), Documents (`/documents`), Prompts (`/prompts/page`). HTMX handles all async interactions (chat submission, upload progress polling, document delete, prompt save/reset).
 
 ## Running
 
@@ -103,9 +103,9 @@ LangGraph (orchestration), langchain-classic (ParentDocumentRetriever, LocalFile
 
 Two upload paths: multipart upload via `POST /api/documents/upload` (20MB limit, `.md` and `.pdf`), or path-based ingest via `POST /api/documents/ingest`. Both create an `IngestionJob` that runs asynchronously and returns a `job_id` for progress polling via `GET /api/documents/jobs/{job_id}`.
 
-Ingestion uses a layered pipeline (`caprag/pipeline.py`): parse → split → [contextualize] → [entity extract] → embed → store. The parse phase detects file type: `.pdf` files go through `caprag/extraction.py` (`extract_pdf` via pymupdf4llm, then `postprocess_headers` to convert bold ALL-CAPS to `##` and bold+italic to `###`, then `clean_page_artifacts` to strip page numbers); `.md` files continue through `UnstructuredMarkdownLoader`. The split phase uses section-aware chunking from `caprag/chunking.py`: markdown headers → sections → parent chunks → child chunks with `doc_id` linkage. An optional contextualize phase (when `ENABLE_CONTEXTUAL_EMBEDDINGS=true`) prepends LLM-generated context to child chunks before embedding. An optional entity extraction phase (when `ENABLE_ENTITY_EXTRACTION=true`) calls `extract_entities_batch` on parent chunks and writes results to the SQLite entity index. Embedding runs in batches of 500. Each phase reports progress separately. The pipeline handles errors per-file (one failure doesn't block others) and supports `replace` mode to delete existing book chunks before re-ingesting.
+Ingestion uses a layered pipeline (`rpg_rules_ai/pipeline.py`): parse → split → [contextualize] → [entity extract] → embed → store. The parse phase detects file type: `.pdf` files go through `rpg_rules_ai/extraction.py` (`extract_pdf` via pymupdf4llm, then `postprocess_headers` to convert bold ALL-CAPS to `##` and bold+italic to `###`, then `clean_page_artifacts` to strip page numbers); `.md` files continue through `UnstructuredMarkdownLoader`. The split phase uses section-aware chunking from `rpg_rules_ai/chunking.py`: markdown headers → sections → parent chunks → child chunks with `doc_id` linkage. An optional contextualize phase (when `ENABLE_CONTEXTUAL_EMBEDDINGS=true`) prepends LLM-generated context to child chunks before embedding. An optional entity extraction phase (when `ENABLE_ENTITY_EXTRACTION=true`) calls `extract_entities_batch` on parent chunks and writes results to the SQLite entity index. Embedding runs in batches of 500. Each phase reports progress separately. The pipeline handles errors per-file (one failure doesn't block others) and supports `replace` mode to delete existing book chunks before re-ingesting.
 
-`caprag/ingest.py` provides `delete_book()` (removes from vectorstore, docstore, and entity index), `get_books_metadata()`, `get_indexed_books()`, and `reindex_directory()`. Full reindex clears the collection and re-runs the pipeline.
+`rpg_rules_ai/ingest.py` provides `delete_book()` (removes from vectorstore, docstore, and entity index), `get_books_metadata()`, `get_indexed_books()`, and `reindex_directory()`. Full reindex clears the collection and re-runs the pipeline.
 
 ## Prompts
 
@@ -117,4 +117,4 @@ Project uses OpenSpec (`openspec/` directory) for artifact-driven development. C
 
 ## Observability
 
-LangSmith project name: `capa-rag`. Tracing enabled when `LANGSMITH_API_KEY` is set.
+LangSmith project name: `rpg-rules-ai`. Tracing enabled when `LANGSMITH_API_KEY` is set.

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from caprag.api import MAX_UPLOAD_SIZE, app
+from rpg_rules_ai.api import MAX_UPLOAD_SIZE, app
 
 client = TestClient(app)
 
@@ -14,8 +14,8 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def mock_deps():
     with (
-        patch("caprag.services.create_ingestion_job") as mock_create_job,
-        patch("caprag.api.settings") as mock_settings,
+        patch("rpg_rules_ai.services.create_ingestion_job") as mock_create_job,
+        patch("rpg_rules_ai.api.settings") as mock_settings,
     ):
         mock_settings.sources_dir = "/tmp/test_sources"
         mock_create_job.return_value = "fake-job-id"
@@ -24,7 +24,7 @@ def mock_deps():
 
 class TestUploadEndpoint:
     def test_upload_single_file(self, mock_deps, tmp_path):
-        with patch("caprag.api.Path") as mock_path_cls:
+        with patch("rpg_rules_ai.api.Path") as mock_path_cls:
             mock_dest = MagicMock()
             mock_path_cls.return_value.__truediv__ = MagicMock(return_value=mock_dest)
 
@@ -37,7 +37,7 @@ class TestUploadEndpoint:
         assert resp.json()["job_id"] == "fake-job-id"
 
     def test_upload_multiple_files(self, mock_deps):
-        with patch("caprag.api.Path") as mock_path_cls:
+        with patch("rpg_rules_ai.api.Path") as mock_path_cls:
             mock_dest = MagicMock()
             mock_path_cls.return_value.__truediv__ = MagicMock(return_value=mock_dest)
 
@@ -72,7 +72,7 @@ class TestUploadEndpoint:
         assert resp.status_code == 413
 
     def test_upload_with_replace_flag(self, mock_deps):
-        with patch("caprag.api.Path") as mock_path_cls:
+        with patch("rpg_rules_ai.api.Path") as mock_path_cls:
             mock_dest = MagicMock()
             mock_path_cls.return_value.__truediv__ = MagicMock(return_value=mock_dest)
 

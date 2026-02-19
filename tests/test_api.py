@@ -7,10 +7,10 @@ import pytest
 from fastapi.testclient import TestClient
 from langchain_core.documents import Document
 
-from caprag.api import app
-from caprag import services
-from caprag.prompts import PROMPTS_DIR
-from caprag.schemas import Question, Questions
+from rpg_rules_ai.api import app
+from rpg_rules_ai import services
+from rpg_rules_ai.prompts import PROMPTS_DIR
+from rpg_rules_ai.schemas import Question, Questions
 
 
 @pytest.fixture
@@ -48,7 +48,7 @@ def test_ask_returns_answer(client):
     mock_graph = AsyncMock()
     mock_graph.ainvoke = AsyncMock(return_value={"answer": mock_answer})
 
-    with patch("caprag.services._get_graph", return_value=mock_graph):
+    with patch("rpg_rules_ai.services._get_graph", return_value=mock_graph):
         resp = client.post("/api/ask", json={"question": "How does Magery work?"})
 
     assert resp.status_code == 200
@@ -67,7 +67,7 @@ def test_ask_missing_question(client):
 
 def test_list_documents(client):
     mock_meta = [{"book": "Basic Set.md", "chunk_count": 100, "has_source": True}]
-    with patch("caprag.services.get_books_metadata", return_value=mock_meta):
+    with patch("rpg_rules_ai.services.get_books_metadata", return_value=mock_meta):
         resp = client.get("/api/documents")
 
     assert resp.status_code == 200
@@ -76,7 +76,7 @@ def test_list_documents(client):
 
 
 def test_list_documents_empty(client):
-    with patch("caprag.services.get_books_metadata", return_value=[]):
+    with patch("rpg_rules_ai.services.get_books_metadata", return_value=[]):
         resp = client.get("/api/documents")
 
     assert resp.status_code == 200
@@ -91,7 +91,7 @@ def test_ingest_starts_job(client, tmp_path):
     md.write_text("# Test")
 
     with patch.object(
-        __import__("caprag.ingestion_job", fromlist=["IngestionJob"]).IngestionJob,
+        __import__("rpg_rules_ai.ingestion_job", fromlist=["IngestionJob"]).IngestionJob,
         "start",
     ):
         resp = client.post(
@@ -115,7 +115,7 @@ def test_ingest_invalid_path(client):
 
 
 def test_job_progress_found(client):
-    from caprag.ingestion_job import IngestionJob
+    from rpg_rules_ai.ingestion_job import IngestionJob
 
     job = IngestionJob(paths=[])
     job._progress["status"] = "done"
@@ -135,7 +135,7 @@ def test_job_progress_not_found(client):
 
 
 def test_delete_document(client):
-    with patch("caprag.services._delete_book") as mock_del:
+    with patch("rpg_rules_ai.services._delete_book") as mock_del:
         resp = client.delete("/api/documents/BasicSet.md")
 
     assert resp.status_code == 200
@@ -146,8 +146,8 @@ def test_delete_document(client):
 
 
 def test_list_prompts(client, monkeypatch, tmp_path):
-    monkeypatch.setattr("caprag.services.PROMPTS_DIR", tmp_path)
-    monkeypatch.setattr("caprag.prompts.PROMPTS_DIR", tmp_path)
+    monkeypatch.setattr("rpg_rules_ai.services.PROMPTS_DIR", tmp_path)
+    monkeypatch.setattr("rpg_rules_ai.prompts.PROMPTS_DIR", tmp_path)
 
     resp = client.get("/api/prompts")
     assert resp.status_code == 200
@@ -162,8 +162,8 @@ def test_list_prompts(client, monkeypatch, tmp_path):
 
 
 def test_list_prompts_with_custom(client, monkeypatch, tmp_path):
-    monkeypatch.setattr("caprag.services.PROMPTS_DIR", tmp_path)
-    monkeypatch.setattr("caprag.prompts.PROMPTS_DIR", tmp_path)
+    monkeypatch.setattr("rpg_rules_ai.services.PROMPTS_DIR", tmp_path)
+    monkeypatch.setattr("rpg_rules_ai.prompts.PROMPTS_DIR", tmp_path)
     (tmp_path / "rag.txt").write_text("custom prompt {question} {context}")
 
     resp = client.get("/api/prompts")
@@ -177,8 +177,8 @@ def test_list_prompts_with_custom(client, monkeypatch, tmp_path):
 
 
 def test_get_prompt(client, monkeypatch, tmp_path):
-    monkeypatch.setattr("caprag.services.PROMPTS_DIR", tmp_path)
-    monkeypatch.setattr("caprag.prompts.PROMPTS_DIR", tmp_path)
+    monkeypatch.setattr("rpg_rules_ai.services.PROMPTS_DIR", tmp_path)
+    monkeypatch.setattr("rpg_rules_ai.prompts.PROMPTS_DIR", tmp_path)
 
     resp = client.get("/api/prompts/rag")
     assert resp.status_code == 200
@@ -195,7 +195,7 @@ def test_get_prompt_not_found(client):
 
 
 def test_update_prompt(client, monkeypatch, tmp_path):
-    monkeypatch.setattr("caprag.prompts.PROMPTS_DIR", tmp_path)
+    monkeypatch.setattr("rpg_rules_ai.prompts.PROMPTS_DIR", tmp_path)
 
     resp = client.put(
         "/api/prompts/rag",
@@ -214,8 +214,8 @@ def test_update_prompt_not_found(client):
 
 
 def test_reset_prompt(client, monkeypatch, tmp_path):
-    monkeypatch.setattr("caprag.services.PROMPTS_DIR", tmp_path)
-    monkeypatch.setattr("caprag.prompts.PROMPTS_DIR", tmp_path)
+    monkeypatch.setattr("rpg_rules_ai.services.PROMPTS_DIR", tmp_path)
+    monkeypatch.setattr("rpg_rules_ai.prompts.PROMPTS_DIR", tmp_path)
     (tmp_path / "rag.txt").write_text("custom")
 
     resp = client.delete("/api/prompts/rag")

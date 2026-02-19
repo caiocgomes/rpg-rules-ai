@@ -1,4 +1,4 @@
-"""Centralized service layer for CapaRAG.
+"""Centralized service layer for RPG Rules AI.
 
 Owns the graph singleton and job registry. Both api.py and frontend.py
 delegate here instead of maintaining their own state.
@@ -9,10 +9,10 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
-from caprag.ingest import delete_book as _delete_book
-from caprag.ingest import get_books_metadata
-from caprag.ingestion_job import IngestionJob
-from caprag.prompts import (
+from rpg_rules_ai.ingest import delete_book as _delete_book
+from rpg_rules_ai.ingest import get_books_metadata
+from rpg_rules_ai.ingestion_job import IngestionJob
+from rpg_rules_ai.prompts import (
     PROMPT_CONFIGS,
     PROMPTS_DIR,
     get_prompt_content,
@@ -27,7 +27,7 @@ _jobs: dict[str, IngestionJob] = {}
 def _get_graph():
     global _graph
     if _graph is None:
-        from caprag.graph import build_graph
+        from rpg_rules_ai.graph import build_graph
 
         _graph = build_graph()
     return _graph

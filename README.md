@@ -1,4 +1,4 @@
-# CapaRAG
+# RPG Rules AI
 
 Sistema agêntico de RAG para responder perguntas sobre RPG a partir de livros de regras. Aceita perguntas em português e inglês, expande a query em múltiplas sub-queries, e retorna respostas estruturadas com citações verbatim, fontes e sugestões de termos relacionados.
 
@@ -15,7 +15,7 @@ Atualmente indexado contra livros de GURPS 4e, mas a arquitetura é agnóstica d
 ### Setup
 
 ```bash
-git clone <repo-url> && cd CapaRAG
+git clone <repo-url> && cd rpg-rules-ai
 uv sync
 cp .env.example .env
 # Edite .env e preencha OPENAI_API_KEY
@@ -76,7 +76,7 @@ Todas as variáveis via `.env` (veja `.env.example`):
 |----------|-------------|---------|-----------|
 | `OPENAI_API_KEY` | Sim | — | API key da OpenAI |
 | `LANGSMITH_API_KEY` | Não | — | Habilita tracing no LangSmith |
-| `LANGCHAIN_PROJECT` | Não | `capa-rag` | Projeto no LangSmith |
+| `LANGCHAIN_PROJECT` | Não | `rpg-rules-ai` | Projeto no LangSmith |
 | `CHROMA_PERSIST_DIR` | Não | `./data/chroma` | Persistência do vector store |
 | `DOCSTORE_DIR` | Não | `./data/docstore` | Persistência do docstore |
 | `SOURCES_DIR` | Não | `./data/sources` | Diretório de fontes markdown |
@@ -92,19 +92,19 @@ O script `deploy/install.sh` faz o setup completo numa máquina Linux. Roda como
 curl -fsSL https://raw.githubusercontent.com/caiocgomes/rpg-rules-ai/main/deploy/install.sh | sudo bash
 ```
 
-O que ele faz: instala `uv` se necessário, clona o repo em `/opt/caprag`, cria o virtualenv via `uv sync`, configura o env file em `/etc/caprag/env`, cria o usuário de sistema `caprag`, instala e habilita o serviço systemd. Se `OPENAI_API_KEY` não estiver configurada, o serviço é instalado mas não iniciado.
+O que ele faz: instala `uv` se necessário, clona o repo em `/opt/rpg-rules-ai`, cria o virtualenv via `uv sync`, configura o env file em `/etc/rpg-rules-ai/env`, cria o usuário de sistema `rpg-rules-ai`, instala e habilita o serviço systemd. Se `OPENAI_API_KEY` não estiver configurada, o serviço é instalado mas não iniciado.
 
 Para instalar em outro diretório:
 
 ```bash
-sudo INSTALL_DIR=/srv/caprag bash deploy/install.sh
+sudo INSTALL_DIR=/srv/rpg-rules-ai bash deploy/install.sh
 ```
 
 Depois de configurar a API key:
 
 ```bash
-sudo vim /etc/caprag/env          # preencher OPENAI_API_KEY
-sudo systemctl start caprag
+sudo vim /etc/rpg-rules-ai/env          # preencher OPENAI_API_KEY
+sudo systemctl start rpg-rules-ai
 ```
 
 Para atualizar uma instalação existente, rode o mesmo script novamente. Ele faz `git pull` e `uv sync` sem perder dados ou configuração.
@@ -112,7 +112,7 @@ Para atualizar uma instalação existente, rode o mesmo script novamente. Ele fa
 ## Estrutura
 
 ```
-caprag/
+rpg_rules_ai/
 ├── api.py            # JSON API endpoints (/api/)
 ├── frontend.py       # Rotas HTMX (/, /documents, /prompts/page)
 ├── services.py       # Service layer compartilhado

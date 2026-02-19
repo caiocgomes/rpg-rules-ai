@@ -8,10 +8,10 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 
-from caprag.config import settings
-from caprag.prompts import get_rag_prompt
-from caprag.schemas import AnswerWithSources, State
-from caprag.strategies import get_strategy
+from rpg_rules_ai.config import settings
+from rpg_rules_ai.prompts import get_rag_prompt
+from rpg_rules_ai.schemas import AnswerWithSources, State
+from rpg_rules_ai.strategies import get_strategy
 
 _FUZZY_MATCH_THRESHOLD = 0.5
 

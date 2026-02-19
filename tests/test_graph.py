@@ -6,13 +6,13 @@ import pytest
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage
 
-from caprag.graph import (
+from rpg_rules_ai.graph import (
     _enrich_citations_with_context,
     _find_best_substring,
     _ground_citations,
     _validate_citations,
 )
-from caprag.schemas import AnswerWithSources, Question, Questions, State
+from rpg_rules_ai.schemas import AnswerWithSources, Question, Questions, State
 
 
 # ---------------------------------------------------------------------------
@@ -20,12 +20,12 @@ from caprag.schemas import AnswerWithSources, Question, Questions, State
 # ---------------------------------------------------------------------------
 
 
-@patch("caprag.graph.settings")
+@patch("rpg_rules_ai.graph.settings")
 def test_setup_langsmith_with_key(mock_settings):
     mock_settings.langsmith_api_key = "sk-test-123"
     mock_settings.langchain_project = "test-project"
 
-    from caprag.graph import _setup_langsmith
+    from rpg_rules_ai.graph import _setup_langsmith
 
     _setup_langsmith()
 
@@ -35,7 +35,7 @@ def test_setup_langsmith_with_key(mock_settings):
     assert os.environ["LANGCHAIN_PROJECT"] == "test-project"
 
 
-@patch("caprag.graph.settings")
+@patch("rpg_rules_ai.graph.settings")
 def test_setup_langsmith_without_key(mock_settings):
     mock_settings.langsmith_api_key = ""
 
@@ -48,7 +48,7 @@ def test_setup_langsmith_without_key(mock_settings):
     ]:
         os.environ.pop(key, None)
 
-    from caprag.graph import _setup_langsmith
+    from rpg_rules_ai.graph import _setup_langsmith
 
     _setup_langsmith()
 
@@ -60,14 +60,14 @@ def test_setup_langsmith_without_key(mock_settings):
 # ---------------------------------------------------------------------------
 
 
-@patch("caprag.graph.settings")
-@patch("caprag.graph.ChatOpenAI")
+@patch("rpg_rules_ai.graph.settings")
+@patch("rpg_rules_ai.graph.ChatOpenAI")
 def test_get_llm(mock_chat, mock_settings):
     mock_settings.llm_model = "gpt-4o-mini"
     sentinel = MagicMock()
     mock_chat.return_value = sentinel
 
-    from caprag.graph import _get_llm
+    from rpg_rules_ai.graph import _get_llm
 
     result = _get_llm()
 
@@ -81,7 +81,7 @@ def test_get_llm(mock_chat, mock_settings):
 
 
 @pytest.mark.asyncio
-@patch("caprag.graph.get_strategy")
+@patch("rpg_rules_ai.graph.get_strategy")
 async def test_retrieve_with_strategy(mock_get_strategy):
     mock_strategy = MagicMock()
     expected = {"questions": Questions(questions=[])}
@@ -90,7 +90,7 @@ async def test_retrieve_with_strategy(mock_get_strategy):
 
     fake_state = {"main_question": "What is GURPS?", "messages": []}
 
-    from caprag.graph import retrieve_with_strategy
+    from rpg_rules_ai.graph import retrieve_with_strategy
 
     result = await retrieve_with_strategy(fake_state)
 
@@ -105,8 +105,8 @@ async def test_retrieve_with_strategy(mock_get_strategy):
 
 
 @pytest.mark.asyncio
-@patch("caprag.graph.get_rag_prompt")
-@patch("caprag.graph._get_llm")
+@patch("rpg_rules_ai.graph.get_rag_prompt")
+@patch("rpg_rules_ai.graph._get_llm")
 async def test_generate_single_question_single_doc(mock_get_llm, mock_get_prompt):
     doc = Document(page_content="GURPS uses 3d6.", metadata={"book": "GURPS Basic"})
     questions = Questions(
@@ -137,7 +137,7 @@ async def test_generate_single_question_single_doc(mock_get_llm, mock_get_prompt
         "messages": [],
     }
 
-    from caprag.graph import generate
+    from rpg_rules_ai.graph import generate
 
     result = await generate(state)
 
@@ -156,8 +156,8 @@ async def test_generate_single_question_single_doc(mock_get_llm, mock_get_prompt
 
 
 @pytest.mark.asyncio
-@patch("caprag.graph.get_rag_prompt")
-@patch("caprag.graph._get_llm")
+@patch("rpg_rules_ai.graph.get_rag_prompt")
+@patch("rpg_rules_ai.graph._get_llm")
 async def test_generate_multiple_questions_multiple_docs(
     mock_get_llm, mock_get_prompt
 ):
@@ -200,7 +200,7 @@ async def test_generate_multiple_questions_multiple_docs(
         "messages": [],
     }
 
-    from caprag.graph import generate
+    from rpg_rules_ai.graph import generate
 
     result = await generate(state)
 
@@ -221,8 +221,8 @@ async def test_generate_multiple_questions_multiple_docs(
 
 
 @pytest.mark.asyncio
-@patch("caprag.graph.get_rag_prompt")
-@patch("caprag.graph._get_llm")
+@patch("rpg_rules_ai.graph.get_rag_prompt")
+@patch("rpg_rules_ai.graph._get_llm")
 async def test_generate_empty_context(mock_get_llm, mock_get_prompt):
     questions = Questions(
         questions=[Question(question="Q1", context=[])]
@@ -252,7 +252,7 @@ async def test_generate_empty_context(mock_get_llm, mock_get_prompt):
         "messages": [],
     }
 
-    from caprag.graph import generate
+    from rpg_rules_ai.graph import generate
 
     result = await generate(state)
 
@@ -262,8 +262,8 @@ async def test_generate_empty_context(mock_get_llm, mock_get_prompt):
 
 
 @pytest.mark.asyncio
-@patch("caprag.graph.get_rag_prompt")
-@patch("caprag.graph._get_llm")
+@patch("rpg_rules_ai.graph.get_rag_prompt")
+@patch("rpg_rules_ai.graph._get_llm")
 async def test_generate_deduplicates_docs(mock_get_llm, mock_get_prompt):
     doc1 = Document(page_content="Same rule.", metadata={"book": "BookA"})
     doc1_dup = Document(page_content="Same rule.", metadata={"book": "BookA"})
@@ -302,7 +302,7 @@ async def test_generate_deduplicates_docs(mock_get_llm, mock_get_prompt):
         "messages": [],
     }
 
-    from caprag.graph import generate
+    from rpg_rules_ai.graph import generate
 
     result = await generate(state)
 
@@ -314,8 +314,8 @@ async def test_generate_deduplicates_docs(mock_get_llm, mock_get_prompt):
 
 
 @pytest.mark.asyncio
-@patch("caprag.graph.get_rag_prompt")
-@patch("caprag.graph._get_llm")
+@patch("rpg_rules_ai.graph.get_rag_prompt")
+@patch("rpg_rules_ai.graph._get_llm")
 async def test_generate_retries_on_missing_citations(mock_get_llm, mock_get_prompt):
     """When LLM returns no citations with context available, retry once."""
     doc = Document(page_content="GURPS uses 3d6.", metadata={"book": "GURPS Basic"})
@@ -349,7 +349,7 @@ async def test_generate_retries_on_missing_citations(mock_get_llm, mock_get_prom
 
     state = {"main_question": "How?", "questions": questions, "messages": []}
 
-    from caprag.graph import generate
+    from rpg_rules_ai.graph import generate
 
     result = await generate(state)
 
@@ -359,8 +359,8 @@ async def test_generate_retries_on_missing_citations(mock_get_llm, mock_get_prom
 
 
 @pytest.mark.asyncio
-@patch("caprag.graph.get_rag_prompt")
-@patch("caprag.graph._get_llm")
+@patch("rpg_rules_ai.graph.get_rag_prompt")
+@patch("rpg_rules_ai.graph._get_llm")
 async def test_generate_fallback_on_persistent_missing_citations(
     mock_get_llm, mock_get_prompt
 ):
@@ -390,7 +390,7 @@ async def test_generate_fallback_on_persistent_missing_citations(
 
     state = {"main_question": "Q?", "questions": questions, "messages": []}
 
-    from caprag.graph import generate
+    from rpg_rules_ai.graph import generate
 
     result = await generate(state)
 
@@ -689,9 +689,9 @@ def test_enrich_citations_html_escapes_special_chars():
 # ---------------------------------------------------------------------------
 
 
-@patch("caprag.graph._setup_langsmith")
+@patch("rpg_rules_ai.graph._setup_langsmith")
 def test_build_graph_returns_compiled_graph(mock_setup):
-    from caprag.graph import build_graph
+    from rpg_rules_ai.graph import build_graph
 
     graph = build_graph()
 

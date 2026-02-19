@@ -23,7 +23,7 @@ def child_doc():
 
 
 @pytest.mark.asyncio
-@patch("caprag.contextualize.ChatOpenAI")
+@patch("rpg_rules_ai.contextualize.ChatOpenAI")
 async def test_generate_context_returns_string(mock_chat_cls, parent_doc, child_doc):
     mock_llm = MagicMock()
     mock_response = MagicMock()
@@ -31,7 +31,7 @@ async def test_generate_context_returns_string(mock_chat_cls, parent_doc, child_
     mock_llm.ainvoke = AsyncMock(return_value=mock_response)
     mock_chat_cls.return_value = mock_llm
 
-    from caprag.contextualize import generate_context
+    from rpg_rules_ai.contextualize import generate_context
 
     result = await generate_context(parent_doc, child_doc, "BasicSet.md")
 
@@ -42,7 +42,7 @@ async def test_generate_context_returns_string(mock_chat_cls, parent_doc, child_
 
 
 @pytest.mark.asyncio
-@patch("caprag.contextualize.ChatOpenAI")
+@patch("rpg_rules_ai.contextualize.ChatOpenAI")
 async def test_generate_context_uses_custom_model(mock_chat_cls, parent_doc, child_doc):
     mock_llm = MagicMock()
     mock_response = MagicMock()
@@ -50,7 +50,7 @@ async def test_generate_context_uses_custom_model(mock_chat_cls, parent_doc, chi
     mock_llm.ainvoke = AsyncMock(return_value=mock_response)
     mock_chat_cls.return_value = mock_llm
 
-    from caprag.contextualize import generate_context
+    from rpg_rules_ai.contextualize import generate_context
 
     await generate_context(parent_doc, child_doc, "BasicSet.md", model="gpt-4o")
 
@@ -58,7 +58,7 @@ async def test_generate_context_uses_custom_model(mock_chat_cls, parent_doc, chi
 
 
 @pytest.mark.asyncio
-@patch("caprag.contextualize.ChatOpenAI")
+@patch("rpg_rules_ai.contextualize.ChatOpenAI")
 async def test_generate_context_falls_back_to_parent_headers(mock_chat_cls):
     parent = Document(
         page_content="Parent content.",
@@ -75,7 +75,7 @@ async def test_generate_context_falls_back_to_parent_headers(mock_chat_cls):
     mock_llm.ainvoke = AsyncMock(return_value=mock_response)
     mock_chat_cls.return_value = mock_llm
 
-    from caprag.contextualize import generate_context
+    from rpg_rules_ai.contextualize import generate_context
 
     await generate_context(parent, child, "Book.md")
 
@@ -84,7 +84,7 @@ async def test_generate_context_falls_back_to_parent_headers(mock_chat_cls):
 
 
 @pytest.mark.asyncio
-@patch("caprag.contextualize.generate_context")
+@patch("rpg_rules_ai.contextualize.generate_context")
 async def test_contextualize_batch_processes_all(mock_gen):
     mock_gen.side_effect = [
         "Context for chunk 0.",
@@ -97,7 +97,7 @@ async def test_contextualize_batch_processes_all(mock_gen):
         for i in range(3)
     ]
 
-    from caprag.contextualize import contextualize_batch
+    from rpg_rules_ai.contextualize import contextualize_batch
 
     results = await contextualize_batch(items, batch_size=10)
 
@@ -107,7 +107,7 @@ async def test_contextualize_batch_processes_all(mock_gen):
 
 
 @pytest.mark.asyncio
-@patch("caprag.contextualize.generate_context")
+@patch("rpg_rules_ai.contextualize.generate_context")
 async def test_contextualize_batch_handles_errors(mock_gen):
     mock_gen.side_effect = [
         "Context OK.",
@@ -120,7 +120,7 @@ async def test_contextualize_batch_handles_errors(mock_gen):
         for i in range(3)
     ]
 
-    from caprag.contextualize import contextualize_batch
+    from rpg_rules_ai.contextualize import contextualize_batch
 
     results = await contextualize_batch(items, batch_size=10)
 
@@ -131,7 +131,7 @@ async def test_contextualize_batch_handles_errors(mock_gen):
 
 
 @pytest.mark.asyncio
-@patch("caprag.contextualize.generate_context")
+@patch("rpg_rules_ai.contextualize.generate_context")
 async def test_contextualize_batch_respects_batch_size(mock_gen):
     call_order = []
 
@@ -146,7 +146,7 @@ async def test_contextualize_batch_respects_batch_size(mock_gen):
         for i in range(5)
     ]
 
-    from caprag.contextualize import contextualize_batch
+    from rpg_rules_ai.contextualize import contextualize_batch
 
     results = await contextualize_batch(items, batch_size=2)
 

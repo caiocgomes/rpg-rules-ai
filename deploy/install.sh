@@ -2,10 +2,10 @@
 set -euo pipefail
 
 REPO_URL="https://github.com/caiocgomes/rpg-rules-ai.git"
-INSTALL_DIR="${INSTALL_DIR:-/opt/caprag}"
-SERVICE_USER="caprag"
-SERVICE_NAME="caprag"
-ENV_DIR="/etc/caprag"
+INSTALL_DIR="${INSTALL_DIR:-/opt/rpg-rules-ai}"
+SERVICE_USER="rpg-rules-ai"
+SERVICE_NAME="rpg-rules-ai"
+ENV_DIR="/etc/rpg-rules-ai"
 ENV_FILE="${ENV_DIR}/env"
 UNIT_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
@@ -86,7 +86,7 @@ chown -R "${SERVICE_USER}:${SERVICE_USER}" "$INSTALL_DIR"
 echo "Installing systemd unit file..."
 cat > "$UNIT_FILE" <<EOF
 [Unit]
-Description=CapaRAG - Agentic RAG for RPG rulebooks
+Description=RPG Rules AI - Agentic RAG for RPG rulebooks
 After=network.target
 
 [Service]
@@ -95,7 +95,7 @@ User=${SERVICE_USER}
 Group=${SERVICE_USER}
 WorkingDirectory=${INSTALL_DIR}
 EnvironmentFile=${ENV_FILE}
-ExecStart=${INSTALL_DIR}/.venv/bin/uvicorn caprag.api:app --host 0.0.0.0 --port \${PORT:-8100} --workers \${WORKERS:-1}
+ExecStart=${INSTALL_DIR}/.venv/bin/uvicorn rpg_rules_ai.api:app --host 0.0.0.0 --port \${PORT:-8100} --workers \${WORKERS:-1}
 Restart=on-failure
 RestartSec=5
 StartLimitIntervalSec=30
@@ -115,7 +115,7 @@ systemctl enable "$SERVICE_NAME"
 
 if grep -q '^OPENAI_API_KEY=$' "$ENV_FILE" || ! grep -q '^OPENAI_API_KEY=' "$ENV_FILE"; then
     echo ""
-    echo "=== CapaRAG service installed but NOT started ==="
+    echo "=== RPG Rules AI service installed but NOT started ==="
     echo ""
     echo "OPENAI_API_KEY is not configured in ${ENV_FILE}."
     echo "Set it and then run: systemctl start ${SERVICE_NAME}"
@@ -123,7 +123,7 @@ else
     echo "Starting ${SERVICE_NAME}..."
     systemctl start "$SERVICE_NAME"
     echo ""
-    echo "=== CapaRAG service installed and running ==="
+    echo "=== RPG Rules AI service installed and running ==="
 fi
 
 echo ""

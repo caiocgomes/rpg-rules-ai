@@ -5,15 +5,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from langchain_core.documents import Document
 
-from caprag.schemas import Question, Questions, State
-from caprag.strategies.base import RetrievalStrategy
-from caprag.strategies.multi_hop import (
+from rpg_rules_ai.schemas import Question, Questions, State
+from rpg_rules_ai.strategies.base import RetrievalStrategy
+from rpg_rules_ai.strategies.multi_hop import (
     MultiHopStrategy,
     SufficiencyAnalysis,
     _deduplicate,
     _doc_hash,
 )
-from caprag.strategies.multi_question import MultiQuestionStrategy
+from rpg_rules_ai.strategies.multi_question import MultiQuestionStrategy
 
 
 # --- Base interface tests ---
@@ -47,7 +47,7 @@ def test_strategy_subclass_with_execute_works():
 def test_config_valid_strategies():
     from pydantic import ValidationError
 
-    from caprag.config import Settings
+    from rpg_rules_ai.config import Settings
 
     s = Settings(openai_api_key="test", retrieval_strategy="multi-hop")
     assert s.retrieval_strategy == "multi-hop"
@@ -59,7 +59,7 @@ def test_config_valid_strategies():
 def test_config_invalid_strategy():
     from pydantic import ValidationError
 
-    from caprag.config import Settings
+    from rpg_rules_ai.config import Settings
 
     with pytest.raises(ValidationError):
         Settings(openai_api_key="test", retrieval_strategy="invalid")
@@ -125,9 +125,9 @@ async def test_multi_hop_single_hop_sufficient():
     )
 
     with (
-        patch("caprag.strategies.multi_hop.get_multi_question_prompt") as mock_prompt,
-        patch("caprag.strategies.multi_hop.get_retriever") as mock_retriever,
-        patch("caprag.strategies.multi_hop.ChatOpenAI") as mock_llm_cls,
+        patch("rpg_rules_ai.strategies.multi_hop.get_multi_question_prompt") as mock_prompt,
+        patch("rpg_rules_ai.strategies.multi_hop.get_retriever") as mock_retriever,
+        patch("rpg_rules_ai.strategies.multi_hop.ChatOpenAI") as mock_llm_cls,
     ):
         # Setup multi-question chain
         mock_chain = AsyncMock()
@@ -183,9 +183,9 @@ async def test_multi_hop_respects_max_hops():
     )
 
     with (
-        patch("caprag.strategies.multi_hop.get_multi_question_prompt") as mock_prompt,
-        patch("caprag.strategies.multi_hop.get_retriever") as mock_retriever,
-        patch("caprag.strategies.multi_hop.ChatOpenAI") as mock_llm_cls,
+        patch("rpg_rules_ai.strategies.multi_hop.get_multi_question_prompt") as mock_prompt,
+        patch("rpg_rules_ai.strategies.multi_hop.get_retriever") as mock_retriever,
+        patch("rpg_rules_ai.strategies.multi_hop.ChatOpenAI") as mock_llm_cls,
     ):
         mock_chain = AsyncMock()
         mock_chain.ainvoke = AsyncMock(return_value=mock_questions)

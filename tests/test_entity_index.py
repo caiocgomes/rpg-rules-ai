@@ -2,7 +2,7 @@
 
 import pytest
 
-from caprag.entity_index import EntityIndex, normalize_entity_name
+from rpg_rules_ai.entity_index import EntityIndex, normalize_entity_name
 
 
 @pytest.fixture

@@ -6,8 +6,8 @@ from langchain_classic.storage import LocalFileStore
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 
-from caprag.chunking import get_child_splitter, get_parent_splitter
-from caprag.config import settings
+from rpg_rules_ai.chunking import get_child_splitter, get_parent_splitter
+from rpg_rules_ai.config import settings
 
 _retriever = None
 _vectorstore = None
@@ -52,7 +52,7 @@ def get_vectorstore() -> BatchedChroma:
     if _vectorstore is None:
         embeddings = OpenAIEmbeddings(model=settings.embedding_model)
         _vectorstore = BatchedChroma(
-            collection_name="caprag",
+            collection_name="rpg_rules_ai",
             embedding_function=embeddings,
             persist_directory=settings.chroma_persist_dir,
         )

@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from caprag.config import settings
-from caprag.retriever import get_docstore, get_vectorstore
+from rpg_rules_ai.config import settings
+from rpg_rules_ai.retriever import get_docstore, get_vectorstore
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ def delete_book(book_name: str) -> None:
 
     # Clean entity index
     try:
-        from caprag.entity_index import EntityIndex
+        from rpg_rules_ai.entity_index import EntityIndex
         entity_idx = EntityIndex()
         try:
             entity_idx.delete_book_entities(book_name)
@@ -87,7 +87,7 @@ def get_books_metadata() -> list[dict]:
     # Entity counts (best-effort, don't break if index unavailable)
     entity_counts: dict[str, int] = {}
     try:
-        from caprag.entity_index import EntityIndex
+        from rpg_rules_ai.entity_index import EntityIndex
         idx = EntityIndex()
         try:
             for book in chunk_counts:
@@ -121,7 +121,7 @@ def reindex_directory(directory: str | Path) -> int:
 
     Returns total number of documents ingested via the layered pipeline.
     """
-    from caprag.pipeline import run_layered_pipeline
+    from rpg_rules_ai.pipeline import run_layered_pipeline
 
     directory = Path(directory)
     if not directory.is_dir():

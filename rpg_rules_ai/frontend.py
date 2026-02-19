@@ -3,14 +3,14 @@ from pathlib import Path
 from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse
 
-from caprag import services
-from caprag.config import settings
+from rpg_rules_ai import services
+from rpg_rules_ai.config import settings
 
 router = APIRouter()
 
 
 def _templates():
-    from caprag.api import templates
+    from rpg_rules_ai.api import templates
     return templates
 
 

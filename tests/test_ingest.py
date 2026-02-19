@@ -16,7 +16,7 @@ def _setup_collection_metadatas(vs, metadatas):
 def tmp_sources(tmp_path):
     sources_dir = tmp_path / "sources"
     sources_dir.mkdir()
-    with patch("caprag.ingest.settings") as mock_settings:
+    with patch("rpg_rules_ai.ingest.settings") as mock_settings:
         mock_settings.sources_dir = str(sources_dir)
         yield sources_dir, mock_settings
 
@@ -37,10 +37,10 @@ class TestDeleteBook:
         mock_docstore = MagicMock()
 
         with (
-            patch("caprag.ingest.get_vectorstore", return_value=mock_vectorstore),
-            patch("caprag.ingest.get_docstore", return_value=mock_docstore),
+            patch("rpg_rules_ai.ingest.get_vectorstore", return_value=mock_vectorstore),
+            patch("rpg_rules_ai.ingest.get_docstore", return_value=mock_docstore),
         ):
-            from caprag.ingest import delete_book
+            from rpg_rules_ai.ingest import delete_book
             delete_book("Magic.md")
 
         mock_vectorstore._collection.delete.assert_called_once_with(where={"book": "Magic.md"})
@@ -50,10 +50,10 @@ class TestDeleteBook:
         mock_vectorstore._collection.get.return_value = {"metadatas": []}
 
         with (
-            patch("caprag.ingest.get_vectorstore", return_value=mock_vectorstore),
-            patch("caprag.ingest.get_docstore", return_value=MagicMock()),
+            patch("rpg_rules_ai.ingest.get_vectorstore", return_value=mock_vectorstore),
+            patch("rpg_rules_ai.ingest.get_docstore", return_value=MagicMock()),
         ):
-            from caprag.ingest import delete_book
+            from rpg_rules_ai.ingest import delete_book
             delete_book("Nonexistent.md")
 
         mock_vectorstore._collection.delete.assert_called_once()
@@ -69,8 +69,8 @@ class TestGetBooksMetadata:
         ])
         (sources_dir / "Basic.md").write_text("x")
 
-        with patch("caprag.ingest.get_vectorstore", return_value=mock_vectorstore):
-            from caprag.ingest import get_books_metadata
+        with patch("rpg_rules_ai.ingest.get_vectorstore", return_value=mock_vectorstore):
+            from rpg_rules_ai.ingest import get_books_metadata
             result = get_books_metadata()
 
         assert len(result) == 2
@@ -82,8 +82,8 @@ class TestGetBooksMetadata:
         assert magic["has_source"] is False
 
     def test_empty_collection(self, tmp_sources, mock_vectorstore):
-        with patch("caprag.ingest.get_vectorstore", return_value=mock_vectorstore):
-            from caprag.ingest import get_books_metadata
+        with patch("rpg_rules_ai.ingest.get_vectorstore", return_value=mock_vectorstore):
+            from rpg_rules_ai.ingest import get_books_metadata
             result = get_books_metadata()
         assert result == []
 
@@ -92,8 +92,8 @@ class TestGetBooksMetadata:
         _setup_collection_metadatas(mock_vectorstore, [{"book": "A.md"}, {"book": "B.md"}])
         (sources_dir / "A.md").write_text("x")
 
-        with patch("caprag.ingest.get_vectorstore", return_value=mock_vectorstore):
-            from caprag.ingest import get_books_metadata
+        with patch("rpg_rules_ai.ingest.get_vectorstore", return_value=mock_vectorstore):
+            from rpg_rules_ai.ingest import get_books_metadata
             result = get_books_metadata()
 
         a = next(r for r in result if r["book"] == "A.md")
@@ -108,15 +108,15 @@ class TestGetIndexedBooks:
             {"book": "Z.md"}, {"book": "A.md"}, {"book": "A.md"},
         ])
 
-        with patch("caprag.ingest.get_vectorstore", return_value=mock_vectorstore):
-            from caprag.ingest import get_indexed_books
+        with patch("rpg_rules_ai.ingest.get_vectorstore", return_value=mock_vectorstore):
+            from rpg_rules_ai.ingest import get_indexed_books
             result = get_indexed_books()
 
         assert result == ["A.md", "Z.md"]
 
     def test_empty_collection(self, mock_vectorstore):
-        with patch("caprag.ingest.get_vectorstore", return_value=mock_vectorstore):
-            from caprag.ingest import get_indexed_books
+        with patch("rpg_rules_ai.ingest.get_vectorstore", return_value=mock_vectorstore):
+            from rpg_rules_ai.ingest import get_indexed_books
             result = get_indexed_books()
         assert result == []
 
@@ -127,8 +127,8 @@ class TestReindexDirectory:
         (tmp_path / "B.md").write_text("# B")
 
         with (
-            patch("caprag.ingest.get_vectorstore", return_value=mock_vectorstore),
-            patch("caprag.pipeline.run_layered_pipeline") as mock_pipeline,
+            patch("rpg_rules_ai.ingest.get_vectorstore", return_value=mock_vectorstore),
+            patch("rpg_rules_ai.pipeline.run_layered_pipeline") as mock_pipeline,
         ):
             mock_pipeline.return_value = {
                 "status": "done",
@@ -137,7 +137,7 @@ class TestReindexDirectory:
                     {"filename": "B.md", "status": "success", "error_message": None},
                 ],
             }
-            from caprag.ingest import reindex_directory
+            from rpg_rules_ai.ingest import reindex_directory
             total = reindex_directory(tmp_path)
 
         assert total == 2
@@ -146,17 +146,17 @@ class TestReindexDirectory:
 
     def test_reindex_empty_dir(self, tmp_path, mock_vectorstore):
         with (
-            patch("caprag.ingest.get_vectorstore", return_value=mock_vectorstore),
-            patch("caprag.pipeline.run_layered_pipeline") as mock_pipeline,
+            patch("rpg_rules_ai.ingest.get_vectorstore", return_value=mock_vectorstore),
+            patch("rpg_rules_ai.pipeline.run_layered_pipeline") as mock_pipeline,
         ):
             mock_pipeline.return_value = {"status": "done", "file_results": []}
-            from caprag.ingest import reindex_directory
+            from rpg_rules_ai.ingest import reindex_directory
             total = reindex_directory(tmp_path)
 
         assert total == 0
         mock_vectorstore.reset_collection.assert_called_once()
 
     def test_invalid_path(self, tmp_path):
-        from caprag.ingest import reindex_directory
+        from rpg_rules_ai.ingest import reindex_directory
         with pytest.raises(FileNotFoundError):
             reindex_directory(tmp_path / "nonexistent")

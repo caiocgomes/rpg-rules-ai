@@ -9,7 +9,7 @@ from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
-from caprag.prompts import DEFAULT_CONTEXT_TEMPLATE
+from rpg_rules_ai.prompts import DEFAULT_CONTEXT_TEMPLATE
 
 logger = logging.getLogger(__name__)
 

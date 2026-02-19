@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from caprag.schemas import State
+from rpg_rules_ai.schemas import State
 
 
 class RetrievalStrategy(ABC):

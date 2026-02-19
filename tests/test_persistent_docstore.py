@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import caprag.retriever as retriever_module
+import rpg_rules_ai.retriever as retriever_module
 
 
 @pytest.fixture(autouse=True)
@@ -20,7 +20,7 @@ def reset_singletons():
 
 class TestDocstorePersistence:
     def test_docstore_uses_local_file_store(self, tmp_path):
-        with patch("caprag.retriever.settings") as mock_settings:
+        with patch("rpg_rules_ai.retriever.settings") as mock_settings:
             mock_settings.docstore_dir = str(tmp_path / "docstore")
             (tmp_path / "docstore").mkdir()
 
@@ -30,7 +30,7 @@ class TestDocstorePersistence:
         assert isinstance(store, LocalFileStore)
 
     def test_docstore_is_cached(self, tmp_path):
-        with patch("caprag.retriever.settings") as mock_settings:
+        with patch("rpg_rules_ai.retriever.settings") as mock_settings:
             mock_settings.docstore_dir = str(tmp_path / "docstore")
             (tmp_path / "docstore").mkdir()
 
@@ -43,7 +43,7 @@ class TestDocstorePersistence:
         docstore_path = tmp_path / "docstore"
         docstore_path.mkdir()
 
-        with patch("caprag.retriever.settings") as mock_settings:
+        with patch("rpg_rules_ai.retriever.settings") as mock_settings:
             mock_settings.docstore_dir = str(docstore_path)
 
             store = retriever_module.get_docstore()
@@ -75,12 +75,12 @@ class TestDeleteConsistency:
         mock_docstore = MagicMock()
 
         with (
-            patch("caprag.ingest.get_vectorstore", return_value=mock_vs),
-            patch("caprag.ingest.get_docstore", return_value=mock_docstore),
-            patch("caprag.ingest.settings") as mock_settings,
+            patch("rpg_rules_ai.ingest.get_vectorstore", return_value=mock_vs),
+            patch("rpg_rules_ai.ingest.get_docstore", return_value=mock_docstore),
+            patch("rpg_rules_ai.ingest.settings") as mock_settings,
         ):
             mock_settings.sources_dir = "/tmp/fake"
-            from caprag.ingest import delete_book
+            from rpg_rules_ai.ingest import delete_book
             delete_book("Book.md")
 
         mock_collection.delete.assert_called_once_with(where={"book": "Book.md"})
@@ -94,12 +94,12 @@ class TestDeleteConsistency:
         mock_collection.count.return_value = 0
 
         with (
-            patch("caprag.ingest.get_vectorstore", return_value=mock_vs),
-            patch("caprag.ingest.get_docstore", return_value=MagicMock()),
-            patch("caprag.ingest.settings") as mock_settings,
+            patch("rpg_rules_ai.ingest.get_vectorstore", return_value=mock_vs),
+            patch("rpg_rules_ai.ingest.get_docstore", return_value=MagicMock()),
+            patch("rpg_rules_ai.ingest.settings") as mock_settings,
         ):
             mock_settings.sources_dir = "/tmp/fake"
-            from caprag.ingest import delete_book
+            from rpg_rules_ai.ingest import delete_book
             delete_book("Nonexistent.md")
 
         mock_collection.delete.assert_called_once()

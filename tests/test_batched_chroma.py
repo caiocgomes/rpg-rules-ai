@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from caprag.retriever import CHROMA_BATCH_LIMIT, BatchedChroma
+from rpg_rules_ai.retriever import CHROMA_BATCH_LIMIT, BatchedChroma
 
 
 @pytest.fixture

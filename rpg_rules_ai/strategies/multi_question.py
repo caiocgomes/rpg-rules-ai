@@ -2,11 +2,11 @@ import asyncio
 
 from langchain_openai import ChatOpenAI
 
-from caprag.config import settings
-from caprag.prompts import get_multi_question_prompt
-from caprag.retriever import get_retriever
-from caprag.schemas import LLMQuestions, Question, Questions, State
-from caprag.strategies.base import RetrievalStrategy
+from rpg_rules_ai.config import settings
+from rpg_rules_ai.prompts import get_multi_question_prompt
+from rpg_rules_ai.retriever import get_retriever
+from rpg_rules_ai.schemas import LLMQuestions, Question, Questions, State
+from rpg_rules_ai.strategies.base import RetrievalStrategy
 
 
 class MultiQuestionStrategy(RetrievalStrategy):

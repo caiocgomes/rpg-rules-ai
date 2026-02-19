@@ -7,8 +7,8 @@ WORKDIR /app
 COPY pyproject.toml uv.lock* ./
 RUN uv sync --no-dev --frozen
 
-COPY caprag/ caprag/
+COPY rpg_rules_ai/ rpg_rules_ai/
 
 EXPOSE 8100
 
-CMD ["uv", "run", "uvicorn", "caprag.api:app", "--host", "0.0.0.0", "--port", "8100"]
+CMD ["uv", "run", "uvicorn", "rpg_rules_ai.api:app", "--host", "0.0.0.0", "--port", "8100"]

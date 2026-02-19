@@ -9,7 +9,7 @@ import pytest
 
 os.environ.setdefault("OPENAI_API_KEY", "test-key")
 
-from caprag.ingestion_job import IngestionJob
+from rpg_rules_ai.ingestion_job import IngestionJob
 
 
 class TestIngestionJobInit:
@@ -50,7 +50,7 @@ class TestGetProgress:
 
 
 class TestRun:
-    @patch("caprag.pipeline.run_layered_pipeline")
+    @patch("rpg_rules_ai.pipeline.run_layered_pipeline")
     def test_successful_run(self, mock_pipeline: MagicMock, tmp_path: Path):
         p1 = tmp_path / "a.md"
         p1.touch()
@@ -72,7 +72,7 @@ class TestRun:
         assert len(progress["file_results"]) == 1
         mock_pipeline.assert_called_once()
 
-    @patch("caprag.pipeline.run_layered_pipeline")
+    @patch("rpg_rules_ai.pipeline.run_layered_pipeline")
     def test_run_with_replace(self, mock_pipeline: MagicMock, tmp_path: Path):
         p1 = tmp_path / "a.md"
         p1.touch()
@@ -84,7 +84,7 @@ class TestRun:
         _, kwargs = mock_pipeline.call_args
         assert kwargs["replace"] is True
 
-    @patch("caprag.pipeline.run_layered_pipeline")
+    @patch("rpg_rules_ai.pipeline.run_layered_pipeline")
     def test_run_exception_sets_error(self, mock_pipeline: MagicMock, tmp_path: Path):
         p1 = tmp_path / "a.md"
         p1.touch()
@@ -99,7 +99,7 @@ class TestRun:
 
 
 class TestStart:
-    @patch("caprag.pipeline.run_layered_pipeline")
+    @patch("rpg_rules_ai.pipeline.run_layered_pipeline")
     def test_start_launches_thread(self, mock_pipeline: MagicMock, tmp_path: Path):
         p1 = tmp_path / "a.md"
         p1.touch()
@@ -112,7 +112,7 @@ class TestStart:
         assert job.get_progress()["status"] == "done"
         assert not job._thread.is_alive()
 
-    @patch("caprag.pipeline.run_layered_pipeline")
+    @patch("rpg_rules_ai.pipeline.run_layered_pipeline")
     def test_start_thread_is_daemon(self, mock_pipeline: MagicMock, tmp_path: Path):
         p1 = tmp_path / "a.md"
         p1.touch()
@@ -123,7 +123,7 @@ class TestStart:
         assert job._thread.daemon is True
         job._thread.join(timeout=5)
 
-    @patch("caprag.pipeline.run_layered_pipeline")
+    @patch("rpg_rules_ai.pipeline.run_layered_pipeline")
     def test_start_error_in_thread(self, mock_pipeline: MagicMock, tmp_path: Path):
         p1 = tmp_path / "a.md"
         p1.touch()
@@ -139,7 +139,7 @@ class TestStart:
 
 
 class TestThreadSafety:
-    @patch("caprag.pipeline.run_layered_pipeline")
+    @patch("rpg_rules_ai.pipeline.run_layered_pipeline")
     def test_concurrent_progress_reads(self, mock_pipeline: MagicMock, tmp_path: Path):
         paths = [tmp_path / f"{i}.md" for i in range(5)]
         for p in paths:

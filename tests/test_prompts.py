@@ -1,7 +1,7 @@
 import pytest
 from langchain_core.prompts import ChatPromptTemplate
 
-from caprag.prompts import (
+from rpg_rules_ai.prompts import (
     DEFAULT_MULTI_QUESTION_TEMPLATE,
     DEFAULT_RAG_TEMPLATE,
     PROMPT_CONFIGS,
@@ -16,7 +16,7 @@ from caprag.prompts import (
 
 @pytest.fixture(autouse=True)
 def fake_prompts_dir(tmp_path, monkeypatch):
-    monkeypatch.setattr("caprag.prompts.PROMPTS_DIR", tmp_path)
+    monkeypatch.setattr("rpg_rules_ai.prompts.PROMPTS_DIR", tmp_path)
     return tmp_path
 
 
@@ -61,7 +61,7 @@ def test_get_prompt_content_returns_file_content(fake_prompts_dir):
 
 def test_save_prompt_creates_dir_and_writes(fake_prompts_dir):
     subdir = fake_prompts_dir / "nested"
-    import caprag.prompts as mod
+    import rpg_rules_ai.prompts as mod
     mod.PROMPTS_DIR = subdir
 
     save_prompt("rag", "saved content")

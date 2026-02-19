@@ -6,15 +6,15 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from caprag import services
-from caprag.config import settings
+from rpg_rules_ai import services
+from rpg_rules_ai.config import settings
 
-app = FastAPI(title="CapaRAG API")
+app = FastAPI(title="RPG Rules AI")
 
-_caprag_dir = Path(__file__).parent
-templates = Jinja2Templates(directory=str(_caprag_dir / "templates"))
+_pkg_dir = Path(__file__).parent
+templates = Jinja2Templates(directory=str(_pkg_dir / "templates"))
 templates.env.filters["regex_replace"] = lambda s, pattern, repl: re.sub(pattern, repl, s)
-app.mount("/static", StaticFiles(directory=str(_caprag_dir / "static")), name="static")
+app.mount("/static", StaticFiles(directory=str(_pkg_dir / "static")), name="static")
 
 
 # --- JSON API router (mounted at /api/) ---
@@ -125,7 +125,7 @@ def entity_graph(chunks: str = ""):
     if not chunk_ids:
         return {"nodes": [], "edges": []}
     try:
-        from caprag.entity_index import EntityIndex
+        from rpg_rules_ai.entity_index import EntityIndex
         idx = EntityIndex()
         try:
             return idx.build_graph_for_chunks(chunk_ids)
@@ -176,6 +176,6 @@ def delete_prompt(name: str):
 
 app.include_router(api_router)
 
-from caprag.frontend import router as frontend_router  # noqa: E402
+from rpg_rules_ai.frontend import router as frontend_router  # noqa: E402
 
 app.include_router(frontend_router)

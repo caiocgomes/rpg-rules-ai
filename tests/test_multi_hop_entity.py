@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from langchain_core.documents import Document
 
-from caprag.entity_index import EntityIndex, EntityMention
-from caprag.schemas import Question, Questions, State
-from caprag.strategies.multi_hop import MultiHopStrategy, SufficiencyAnalysis
+from rpg_rules_ai.entity_index import EntityIndex, EntityMention
+from rpg_rules_ai.schemas import Question, Questions, State
+from rpg_rules_ai.strategies.multi_hop import MultiHopStrategy, SufficiencyAnalysis
 
 
 def _make_doc(content: str, book: str = "Basic Set", doc_id: str = "") -> Document:
@@ -27,7 +27,7 @@ class TestEntityCrossBookQueries:
     def test_returns_empty_when_entity_extraction_disabled(self):
         strategy = MultiHopStrategy()
         docs = [_make_doc("Rapid Strike", "Basic Set", "c1")]
-        with patch("caprag.strategies.multi_hop.settings") as mock_settings:
+        with patch("rpg_rules_ai.strategies.multi_hop.settings") as mock_settings:
             mock_settings.enable_entity_retrieval = False
             result = strategy._entity_cross_book_queries(docs)
         assert result == []
@@ -46,8 +46,8 @@ class TestEntityCrossBookQueries:
         docs = [_make_doc("Rapid Strike info", "Basic Set", "c1")]
 
         with (
-            patch("caprag.strategies.multi_hop.settings") as mock_settings,
-            patch("caprag.entity_index.settings") as mock_ei_settings,
+            patch("rpg_rules_ai.strategies.multi_hop.settings") as mock_settings,
+            patch("rpg_rules_ai.entity_index.settings") as mock_ei_settings,
         ):
             mock_settings.enable_entity_retrieval = True
             mock_ei_settings.entity_index_path = str(db_path)
@@ -69,8 +69,8 @@ class TestEntityCrossBookQueries:
         docs = [_make_doc("Magery info", "Basic Set", "c1")]
 
         with (
-            patch("caprag.strategies.multi_hop.settings") as mock_settings,
-            patch("caprag.entity_index.settings") as mock_ei_settings,
+            patch("rpg_rules_ai.strategies.multi_hop.settings") as mock_settings,
+            patch("rpg_rules_ai.entity_index.settings") as mock_ei_settings,
         ):
             mock_settings.enable_entity_retrieval = True
             mock_ei_settings.entity_index_path = str(db_path)
@@ -84,8 +84,8 @@ class TestEntityCrossBookQueries:
         docs = [_make_doc("Content", "Book", "c1")]
 
         with (
-            patch("caprag.strategies.multi_hop.settings") as mock_settings,
-            patch("caprag.entity_index.settings") as mock_ei_settings,
+            patch("rpg_rules_ai.strategies.multi_hop.settings") as mock_settings,
+            patch("rpg_rules_ai.entity_index.settings") as mock_ei_settings,
         ):
             mock_settings.enable_entity_retrieval = True
             mock_ei_settings.entity_index_path = "/nonexistent/path/db.sqlite"

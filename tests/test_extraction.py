@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-from caprag.extraction import clean_page_artifacts, postprocess_headers
+from rpg_rules_ai.extraction import clean_page_artifacts, postprocess_headers
 
 
 class TestPostprocessHeaders:
@@ -114,7 +114,7 @@ class TestExtractPdf:
         mock_pymupdf = sys.modules["pymupdf4llm"]
         mock_pymupdf.to_markdown.return_value = "# Title\nContent"
 
-        from caprag.extraction import extract_pdf
+        from rpg_rules_ai.extraction import extract_pdf
 
         result = extract_pdf(Path("/fake/book.pdf"))
 

@@ -10,7 +10,7 @@ from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
 )
 
-from caprag.config import settings
+from rpg_rules_ai.config import settings
 
 
 def get_child_splitter() -> RecursiveCharacterTextSplitter:

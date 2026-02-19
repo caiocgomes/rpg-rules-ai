@@ -3,8 +3,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from langchain_core.documents import Document
 
-from caprag.schemas import Question, Questions
-from caprag.strategies.multi_question import MultiQuestionStrategy
+from rpg_rules_ai.schemas import Question, Questions
+from rpg_rules_ai.strategies.multi_question import MultiQuestionStrategy
 
 
 def _make_state(question: str) -> dict:
@@ -20,9 +20,9 @@ async def test_execute_happy_path():
     docs = [Document(page_content="Some rule", metadata={"book": "Basic Set"})]
 
     with (
-        patch("caprag.strategies.multi_question.get_multi_question_prompt") as mock_prompt,
-        patch("caprag.strategies.multi_question.get_retriever") as mock_retriever,
-        patch("caprag.strategies.multi_question.ChatOpenAI") as mock_llm_cls,
+        patch("rpg_rules_ai.strategies.multi_question.get_multi_question_prompt") as mock_prompt,
+        patch("rpg_rules_ai.strategies.multi_question.get_retriever") as mock_retriever,
+        patch("rpg_rules_ai.strategies.multi_question.ChatOpenAI") as mock_llm_cls,
     ):
         # Setup chain: prompt | llm.with_structured_output(Questions)
         mock_chain = AsyncMock()
