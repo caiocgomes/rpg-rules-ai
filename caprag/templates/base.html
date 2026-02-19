@@ -21,7 +21,7 @@
             // Collapse triple+ newlines back to double
             md = md.replace(/\n{3,}/g, '\n\n');
             var html = marked.parse(md);
-            html = html.replace(/\[(\d+)\]/g, '<a href="#cite-$1" class="cite-marker">[$1]</a>');
+            html = html.replace(/\[(\d+)\]/g, '<a href="#cite-$1" class="cite-marker" aria-label="Citation $1">[$1]</a>');
             el.innerHTML = html;
         }
         document.addEventListener('htmx:afterSwap', function(evt) {
@@ -37,22 +37,61 @@
             equipment: '#795548', modifier: '#607D8B', other: '#9E9E9E'
         };
 
+        function buildEntityTables(data, tablesContainer) {
+            var nodeMap = {};
+            data.nodes.forEach(function(n) { nodeMap[n.id] = n; });
+
+            var entityNodes = data.nodes.filter(function(n) { return n.type !== 'book'; });
+            var bookNodes = data.nodes.filter(function(n) { return n.type === 'book'; });
+
+            // Entities table
+            if (entityNodes.length > 0) {
+                var html = '<table><caption class="sr-only">Entities</caption>' +
+                    '<thead><tr><th scope="col">Entity</th><th scope="col">Type</th></tr></thead><tbody>';
+                entityNodes.forEach(function(n) {
+                    html += '<tr><td>' + n.label + '</td><td>' + (n.entity_type || '') + '</td></tr>';
+                });
+                html += '</tbody></table>';
+                tablesContainer.innerHTML = html;
+            }
+
+            // Relationships table
+            if (data.edges.length > 0) {
+                var html2 = '<table><caption class="sr-only">Relationships</caption>' +
+                    '<thead><tr><th scope="col">From</th><th scope="col">Relation</th><th scope="col">To</th></tr></thead><tbody>';
+                data.edges.forEach(function(e) {
+                    var fromLabel = nodeMap[e.from] ? nodeMap[e.from].label : e.from;
+                    var toLabel = nodeMap[e.to] ? nodeMap[e.to].label : e.to;
+                    html2 += '<tr><td>' + fromLabel + '</td><td>' + (e.relation || '') + '</td><td>' + toLabel + '</td></tr>';
+                });
+                html2 += '</tbody></table>';
+                tablesContainer.innerHTML += html2;
+            }
+        }
+
         function openEntityGraph(btn) {
             var docIds = btn.getAttribute('data-doc-ids');
             if (!docIds) return;
-            var modal = btn.closest('.chat-bubble').querySelector('.entity-graph-modal');
-            if (!modal) return;
-            modal.style.display = 'block';
-            var container = modal.querySelector('.graph-container');
-            container.innerHTML = '<p>Loading graph...</p>';
+            var dialog = btn.closest('.chat-bubble').querySelector('.entity-graph-modal');
+            if (!dialog) return;
+            dialog._triggerBtn = btn;
+            var container = dialog.querySelector('.graph-container');
+            var tablesContainer = dialog.querySelector('.graph-tables');
+            tablesContainer.innerHTML = '<p role="status">Loading entity graph...</p>';
+            container.innerHTML = '';
+            dialog.showModal();
 
             fetch('/api/entity-graph?chunks=' + encodeURIComponent(docIds))
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     if (!data.nodes || data.nodes.length === 0) {
-                        container.innerHTML = '<p>No entities found for this answer.</p>';
+                        tablesContainer.innerHTML = '<p>No entities found for this answer.</p>';
+                        tablesContainer.focus();
+                        container.innerHTML = '';
                         return;
                     }
+                    buildEntityTables(data, tablesContainer);
+                    tablesContainer.focus();
                     var nodes = data.nodes.map(function(n) {
                         if (n.type === 'book') {
                             return {
@@ -90,27 +129,32 @@
                     );
                 })
                 .catch(function() {
-                    container.innerHTML = '<p>Error loading entity graph.</p>';
+                    tablesContainer.innerHTML = '<p>Error loading entity graph.</p>';
+                    container.innerHTML = '';
                 });
         }
 
         function closeEntityGraph(btn) {
-            btn.closest('.entity-graph-modal').style.display = 'none';
+            var dialog = btn.closest('.entity-graph-modal');
+            var triggerBtn = dialog._triggerBtn;
+            dialog.close();
+            if (triggerBtn) triggerBtn.focus();
         }
     </script>
 </head>
 <body>
-    <nav class="container">
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    <nav class="container" aria-label="Main navigation">
         <ul>
-            <li><strong>CapaRAG</strong></li>
+            <li><h1 class="nav-title">CapaRAG</h1></li>
         </ul>
         <ul>
-            <li><a href="/"{% if active_page == "chat" %} class="active"{% endif %}>Chat</a></li>
-            <li><a href="/documents"{% if active_page == "documents" %} class="active"{% endif %}>Documents</a></li>
-            <li><a href="/prompts/page"{% if active_page == "prompts" %} class="active"{% endif %}>Prompts</a></li>
+            <li><a href="/"{% if active_page == "chat" %} aria-current="page"{% endif %}>Chat</a></li>
+            <li><a href="/documents"{% if active_page == "documents" %} aria-current="page"{% endif %}>Documents</a></li>
+            <li><a href="/prompts/page"{% if active_page == "prompts" %} aria-current="page"{% endif %}>Prompts</a></li>
         </ul>
     </nav>
-    <main class="container">
+    <main class="container" id="main-content">
         {% block content %}{% endblock %}
     </main>
 </body>

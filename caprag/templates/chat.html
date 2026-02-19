@@ -3,7 +3,7 @@
 {% block content %}
 <h2>Chat</h2>
 
-<div id="chat-messages"></div>
+<div id="chat-messages" role="log" aria-live="polite" aria-label="Chat messages"></div>
 
 <form hx-post="/chat/ask"
       hx-target="#chat-messages"
@@ -11,10 +11,11 @@
       hx-indicator="#chat-loading"
       hx-disabled-elt="button[type='submit']"
       hx-on::after-request="this.reset(); document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;">
+    <label for="question" class="sr-only">Ask a question about RPG rules</label>
     <fieldset role="group">
-        <input type="text" name="question" placeholder="Ask a question about RPG rules..." required autofocus>
+        <input type="text" id="question" name="question" placeholder="Ask a question about RPG rules..." required autofocus>
         <button type="submit">Send</button>
     </fieldset>
-    <span id="chat-loading" class="htmx-indicator" aria-busy="true">Thinking...</span>
+    <span id="chat-loading" class="htmx-indicator" role="status" aria-live="polite">Thinking...</span>
 </form>
 {% endblock %}

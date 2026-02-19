@@ -38,11 +38,12 @@
     </p>
     {% endif %}
 
-    <div class="entity-graph-modal" style="display:none;">
+    <dialog class="entity-graph-modal" aria-labelledby="graph-title-{{ loop.index0 if loop is defined else '' }}">
         <div class="graph-header">
-            <strong>Entity Graph</strong>
-            <button class="close-graph" onclick="closeEntityGraph(this)">&times;</button>
+            <h2 id="graph-title-{{ loop.index0 if loop is defined else '' }}" class="graph-title">Entity Graph</h2>
+            <button class="close-graph" aria-label="Close entity graph" onclick="closeEntityGraph(this)">&times;</button>
         </div>
-        <div class="graph-container"></div>
-    </div>
+        <div class="graph-tables" tabindex="-1"></div>
+        <div class="graph-container" aria-hidden="true"></div>
+    </dialog>
 </div>

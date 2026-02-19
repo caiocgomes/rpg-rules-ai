@@ -1,6 +1,6 @@
 <article>
     <header>
-        <strong>{{ prompt.name }}</strong>
+        <strong id="prompt-label-{{ prompt.name }}">{{ prompt.name }}</strong>
         <small>Variables: {{ prompt.variables | join(", ") }}</small>
         {% if saved|default(false) %}
         <mark>Saved</mark>
@@ -11,7 +11,7 @@
     <form hx-put="/prompts/htmx/{{ prompt.name }}"
           hx-target="#prompt-{{ prompt.name }}"
           hx-swap="innerHTML">
-        <textarea name="content" rows="12">{{ prompt.content }}</textarea>
+        <textarea name="content" rows="12" aria-labelledby="prompt-label-{{ prompt.name }}">{{ prompt.content }}</textarea>
         <div role="group">
             <button type="submit">Save</button>
             <button type="button" class="secondary"

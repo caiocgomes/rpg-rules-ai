@@ -12,7 +12,8 @@
                   hx-swap="innerHTML"
                   hx-encoding="multipart/form-data"
                   hx-indicator="#upload-loading">
-                <input type="file" name="files" accept=".md" multiple required>
+                <label for="file-upload">Files to upload (.md, .pdf)</label>
+                <input type="file" id="file-upload" name="files" accept=".md,.pdf" multiple required>
                 <label>
                     <input type="checkbox" name="replace" value="true">
                     Replace existing books
@@ -28,7 +29,8 @@
                   hx-target="#progress-area"
                   hx-swap="innerHTML"
                   hx-indicator="#dir-loading">
-                <input type="text" name="directory" placeholder="/path/to/markdown/files" required>
+                <label for="dir-path">Directory path</label>
+                <input type="text" id="dir-path" name="directory" placeholder="/path/to/markdown/files" required>
                 <label>
                     <input type="checkbox" name="replace" value="true">
                     Replace existing books
