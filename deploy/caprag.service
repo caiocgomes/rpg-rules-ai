@@ -1,0 +1,21 @@
+[Unit]
+Description=CapaRAG - Agentic RAG for RPG rulebooks
+After=network.target
+
+[Service]
+Type=simple
+User=caprag
+Group=caprag
+WorkingDirectory=/opt/caprag
+EnvironmentFile=/opt/caprag/.env
+ExecStart=/usr/local/bin/uv run uvicorn caprag.api:app --host 0.0.0.0 --port ${PORT:-8100} --workers ${WORKERS:-1}
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=30
+StartLimitBurst=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=caprag
+
+[Install]
+WantedBy=multi-user.target
