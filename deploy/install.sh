@@ -94,8 +94,10 @@ Type=simple
 User=${SERVICE_USER}
 Group=${SERVICE_USER}
 WorkingDirectory=${INSTALL_DIR}
+Environment=PORT=8100
+Environment=WORKERS=1
 EnvironmentFile=${ENV_FILE}
-ExecStart=${INSTALL_DIR}/.venv/bin/uvicorn rpg_rules_ai.api:app --host 0.0.0.0 --port \${PORT:-8100} --workers \${WORKERS:-1}
+ExecStart=${INSTALL_DIR}/.venv/bin/uvicorn rpg_rules_ai.api:app --host 0.0.0.0 --port \${PORT} --workers \${WORKERS}
 Restart=on-failure
 RestartSec=5
 StartLimitIntervalSec=30
