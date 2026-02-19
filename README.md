@@ -84,6 +84,31 @@ Todas as variáveis via `.env` (veja `.env.example`):
 | `EMBEDDING_MODEL` | Não | `text-embedding-3-large` | Modelo de embeddings |
 | `RETRIEVAL_STRATEGY` | Não | `multi-hop` | Estratégia de retrieval |
 
+## Deploy (Linux com systemd)
+
+O script `deploy/install.sh` faz o setup completo numa máquina Linux. Roda como root:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/caiocgomes/rpg-rules-ai/main/deploy/install.sh | sudo bash
+```
+
+O que ele faz: instala `uv` se necessário, clona o repo em `/opt/caprag`, cria o virtualenv via `uv sync`, configura o env file em `/etc/caprag/env`, cria o usuário de sistema `caprag`, instala e habilita o serviço systemd. Se `OPENAI_API_KEY` não estiver configurada, o serviço é instalado mas não iniciado.
+
+Para instalar em outro diretório:
+
+```bash
+sudo INSTALL_DIR=/srv/caprag bash deploy/install.sh
+```
+
+Depois de configurar a API key:
+
+```bash
+sudo vim /etc/caprag/env          # preencher OPENAI_API_KEY
+sudo systemctl start caprag
+```
+
+Para atualizar uma instalação existente, rode o mesmo script novamente. Ele faz `git pull` e `uv sync` sem perder dados ou configuração.
+
 ## Estrutura
 
 ```
