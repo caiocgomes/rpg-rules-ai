@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langchain_core.documents import Document
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from rpg_rules_ai.graph import (
     _enrich_citations_with_context,
@@ -697,11 +697,173 @@ def test_build_graph_returns_compiled_graph(mock_setup):
 
     mock_setup.assert_called_once()
 
-    # The compiled graph should have the nodes we defined
+    # The compiled graph should have all three nodes
     node_names = set(graph.get_graph().nodes.keys())
+    assert "rewrite" in node_names
     assert "retrieve" in node_names
     assert "generate" in node_names
 
     # Verify it's a runnable (compiled graph)
     assert hasattr(graph, "invoke")
     assert hasattr(graph, "ainvoke")
+
+
+@patch("rpg_rules_ai.graph._setup_langsmith")
+def test_build_graph_has_checkpointer(mock_setup):
+    from rpg_rules_ai.graph import build_graph
+
+    graph = build_graph()
+    assert graph.checkpointer is not None
+
+
+# ---------------------------------------------------------------------------
+# _get_recent_history
+# ---------------------------------------------------------------------------
+
+
+def test_get_recent_history_empty():
+    from rpg_rules_ai.graph import _get_recent_history
+
+    assert _get_recent_history([]) == []
+
+
+def test_get_recent_history_single_message_no_pairs():
+    from langchain_core.messages import HumanMessage
+    from rpg_rules_ai.graph import _get_recent_history
+
+    # Only the current question, no history
+    msgs = [HumanMessage(content="What is GURPS?")]
+    assert _get_recent_history(msgs) == []
+
+
+def test_get_recent_history_one_pair():
+    from rpg_rules_ai.graph import _get_recent_history
+
+    msgs = [
+        HumanMessage(content="What is GURPS?"),
+        AIMessage(content='{"answer": "A RPG system."}'),
+        HumanMessage(content="Tell me more."),  # current question
+    ]
+    pairs = _get_recent_history(msgs)
+    assert len(pairs) == 1
+    assert pairs[0][0] == "What is GURPS?"
+    assert '{"answer": "A RPG system."}' in pairs[0][1]
+
+
+def test_get_recent_history_under_limit():
+    from rpg_rules_ai.graph import _get_recent_history
+
+    msgs = []
+    for i in range(3):
+        msgs.append(HumanMessage(content=f"Q{i}"))
+        msgs.append(AIMessage(content=f"A{i}"))
+    msgs.append(HumanMessage(content="Current"))  # current question
+
+    pairs = _get_recent_history(msgs)
+    assert len(pairs) == 3
+    assert pairs[0] == ("Q0", "A0")
+    assert pairs[2] == ("Q2", "A2")
+
+
+def test_get_recent_history_over_limit():
+    from rpg_rules_ai.graph import _get_recent_history
+
+    msgs = []
+    for i in range(25):
+        msgs.append(HumanMessage(content=f"Q{i}"))
+        msgs.append(AIMessage(content=f"A{i}"))
+    msgs.append(HumanMessage(content="Current"))
+
+    pairs = _get_recent_history(msgs, max_pairs=20)
+    assert len(pairs) == 20
+    # Should have the last 20, so Q5..Q24
+    assert pairs[0] == ("Q5", "A5")
+    assert pairs[-1] == ("Q24", "A24")
+
+
+# ---------------------------------------------------------------------------
+# rewrite
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@patch("rpg_rules_ai.graph.ChatOpenAI")
+@patch("rpg_rules_ai.graph.settings")
+async def test_rewrite_no_history_passes_through(mock_settings, mock_chat_cls):
+    """First question with no history should pass through unchanged."""
+    mock_settings.context_model = "gpt-4o-mini"
+
+    from rpg_rules_ai.graph import rewrite
+
+    state = {"messages": [HumanMessage(content="What is Rapid Strike?")]}
+    result = await rewrite(state)
+
+    assert result["main_question"] == "What is Rapid Strike?"
+    mock_chat_cls.assert_not_called()
+
+
+@pytest.mark.asyncio
+@patch("rpg_rules_ai.graph.ChatOpenAI")
+@patch("rpg_rules_ai.graph.settings")
+async def test_rewrite_with_history_calls_llm(mock_settings, mock_chat_cls):
+    """Follow-up question with history should call LLM for rewriting."""
+    mock_settings.context_model = "gpt-4o-mini"
+
+    mock_llm = MagicMock()
+    mock_response = MagicMock()
+    mock_response.content = "How many levels does Rapid Strike have in GURPS?"
+    mock_llm.ainvoke = AsyncMock(return_value=mock_response)
+    mock_chat_cls.return_value = mock_llm
+
+    from rpg_rules_ai.graph import rewrite
+
+    state = {
+        "messages": [
+            HumanMessage(content="What is Rapid Strike?"),
+            AIMessage(content='{"answer": "A combat maneuver."}'),
+            HumanMessage(content="How many levels does it have?"),
+        ]
+    }
+    result = await rewrite(state)
+
+    assert result["main_question"] == "How many levels does Rapid Strike have in GURPS?"
+    mock_llm.ainvoke.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# ask_question with thread_id
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ask_question_passes_thread_id_to_graph():
+    """ask_question should pass thread_id in config to graph.ainvoke."""
+    mock_graph = AsyncMock()
+    mock_graph.ainvoke = AsyncMock(return_value={
+        "answer": {"answer": "test", "sources": [], "citations": [], "see_also": []}
+    })
+
+    with patch("rpg_rules_ai.services._get_graph", return_value=mock_graph):
+        from rpg_rules_ai.services import ask_question
+        await ask_question("What is GURPS?", thread_id="test-thread-123")
+
+    _, kwargs = mock_graph.ainvoke.call_args
+    assert kwargs["config"]["configurable"]["thread_id"] == "test-thread-123"
+
+
+@pytest.mark.asyncio
+async def test_ask_question_generates_thread_id_when_none():
+    """ask_question should generate a UUID when thread_id is None."""
+    mock_graph = AsyncMock()
+    mock_graph.ainvoke = AsyncMock(return_value={
+        "answer": {"answer": "test", "sources": [], "citations": [], "see_also": []}
+    })
+
+    with patch("rpg_rules_ai.services._get_graph", return_value=mock_graph):
+        from rpg_rules_ai.services import ask_question
+        await ask_question("What is GURPS?")
+
+    _, kwargs = mock_graph.ainvoke.call_args
+    thread_id = kwargs["config"]["configurable"]["thread_id"]
+    assert thread_id is not None
+    assert len(thread_id) > 0

@@ -15,9 +15,9 @@ class MultiQuestionStrategy(RetrievalStrategy):
         prompt = get_multi_question_prompt()
         chain = prompt | llm.with_structured_output(LLMQuestions)
 
-        main_question = state["messages"][-1].content
+        main_question = state["main_question"]
         llm_result = await chain.ainvoke(
-            {"messages": [("user", f"Expand the following question: {state['messages']}")]}
+            {"messages": [("user", f"Expand the following question: {main_question}")]}
         )
         questions = Questions(
             questions=[Question(question=q.question) for q in llm_result.questions]

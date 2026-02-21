@@ -38,11 +38,12 @@ def health_root():
 
 class AskRequest(BaseModel):
     question: str
+    thread_id: str | None = None
 
 
 @api_router.post("/ask")
 async def ask(req: AskRequest):
-    return await services.ask_question(req.question)
+    return await services.ask_question(req.question, thread_id=req.thread_id)
 
 
 # --- Documents ---

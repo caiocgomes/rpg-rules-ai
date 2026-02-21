@@ -20,7 +20,7 @@ def _make_doc(content: str, book: str = "Basic Set", doc_id: str = "") -> Docume
 def _make_state(question: str) -> dict:
     msg = MagicMock()
     msg.content = question
-    return {"messages": [msg]}
+    return {"messages": [msg], "main_question": question}
 
 
 class TestEntityCrossBookQueries:

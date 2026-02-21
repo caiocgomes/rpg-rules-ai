@@ -36,10 +36,13 @@ def _get_graph():
 # --- Chat ---
 
 
-async def ask_question(question: str) -> dict:
+async def ask_question(question: str, thread_id: str | None = None) -> dict:
+    if thread_id is None:
+        thread_id = str(uuid.uuid4())
     graph = _get_graph()
     result = await graph.ainvoke(
         {"messages": {"role": "user", "content": question}},
+        config={"configurable": {"thread_id": thread_id}},
     )
     return result["answer"]
 

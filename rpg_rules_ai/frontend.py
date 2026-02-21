@@ -25,8 +25,12 @@ async def chat_page(request: Request):
 
 
 @router.post("/chat/ask", response_class=HTMLResponse)
-async def chat_ask(request: Request, question: str = Form(...)):
-    answer = await services.ask_question(question)
+async def chat_ask(
+    request: Request,
+    question: str = Form(...),
+    thread_id: str | None = Form(None),
+):
+    answer = await services.ask_question(question, thread_id=thread_id)
     t = _templates()
     user_html = t.TemplateResponse(
         "fragments/chat_message.html",

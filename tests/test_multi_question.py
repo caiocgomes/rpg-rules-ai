@@ -10,7 +10,7 @@ from rpg_rules_ai.strategies.multi_question import MultiQuestionStrategy
 def _make_state(question: str) -> dict:
     msg = MagicMock()
     msg.content = question
-    return {"messages": [msg]}
+    return {"messages": [msg], "main_question": question}
 
 
 @pytest.mark.asyncio

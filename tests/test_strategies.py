@@ -111,7 +111,7 @@ def test_deduplicate_all_duplicates():
 def _make_state(question: str) -> dict:
     msg = MagicMock()
     msg.content = question
-    return {"messages": [msg]}
+    return {"messages": [msg], "main_question": question}
 
 
 @pytest.mark.asyncio
